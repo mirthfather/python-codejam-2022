@@ -3,6 +3,12 @@
 ## Who We Are
 
 ### Angus L'Herrou
+I’m currently working as an NLP data scientist and researcher. I’ve been programming professionally
+in various capacities for about two years. I've worked on various Python packages designing and
+refining library and package APIs, packaging software for release on PyPI, training machine learning
+models, and writing scripts to wrangle data from various sources.
+
+My personal GitHub account is [angus-lherrou](https://github.com/angus-lherrou).
 
 ### John Jolly
 I'm currently a third-year grad student from the University of Utah. I'm researching compiler optimizations for sparse tensors. This mostly deals with making it work generally for the LLVM MLIR compiler tools. I am also an adjunct professor for Utah Valley University specializing with the Operating System Theory and Compiler Development classes.
