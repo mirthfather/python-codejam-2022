@@ -26,3 +26,8 @@ For the competition you can find me at https://github.com/mirthfather, and for e
 ### Joe Murphy
 
 ### Byron Sharman
+I'm nothing but a young student who has been coding for a while. In the [Python Discord](https://discord.gg/python), I saw something called the "Code Jam" that looked like fun, so I thought I'd try it out! Although I've never used Python in a professional context, it was the first programming language I learned, and I have yet to find one that I like more.
+
+Some of my personal hobbies include listening to Romantic-era classical music (especially, but not exclusively, piano concerti or solo piano works), being a member of a [FIRST Robotics Competition](https://www.firstinspires.org/robotics/frc) team, proofreading Wikipedia, and joining the communities of open-source projects.
+
+You can find me on GitHub at https://github.com/b-sharman.
