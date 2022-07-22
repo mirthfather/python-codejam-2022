@@ -1,5 +1,33 @@
 # Python Codejam 2022 - Team Synergistic Sylphs
 
+## Program Ideas
+Here is the place to put your thoughs and dreams about how to wow the judges:
+* Corrupted Chatbot
+  * Accepts input from user, but corrupts the output to the receivers
+  * Much like the Captcha text testers
+  * Possibly implement an escape room or adventure MUD (multiuser dungeon)
+* Laggy Game
+  * Multiplayer game that has a 1000ms lag from player input to game response
+  * Purposeful lag in either client or server
+    * Could putting the lag in the client be exploited?
+  * Game ideas:
+    * Snake
+    * Gather the gems
+  * Use pygame for frontend
+  * Keep track of player history?
+    * Authentication?
+
+## Meeting Notes
+* 22 July 2022 - Pi Approximation Day
+  * Attendance: Mirthfather, NoNo, murphy-joe
+  * Discussed:
+    * Corrupted Chatbot
+    * Laggy Game
+  * Actions Taken
+    * Move discussion to GitHub (Mirth)
+    * Create source structure in GitHub (All)
+    * Create server host (Mirth)
+
 ## Who We Are
 
 ### Angus L'Herrou
