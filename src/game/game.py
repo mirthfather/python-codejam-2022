@@ -92,9 +92,9 @@ class Character(AbstractSprite):
         # These next two lines could be combined, but they are already basically unreadable as is. :P
 
         # set the maximum x and y to screen width and height
-        self.pos = np.minimum((WIDTH - (Character.WIDTH / 2), HEIGHT - (Character.HEIGHT / 2)), self.pos)
+        self.pos = np.minimum((WIDTH-(Character.WIDTH/2), HEIGHT-(Character.HEIGHT/2)), self.pos)
         # set the minimum x and y to zero
-        self.pos = np.maximum((Character.WIDTH / 2, Character.HEIGHT / 2), self.pos)
+        self.pos = np.maximum((Character.WIDTH/2, Character.HEIGHT/2), self.pos)
 
         # changing the rect's center automatically changes the sprite's position
         self.rect.center = self.pos
@@ -107,7 +107,6 @@ class Game(object):
     GEM_NUMBER = 10
 
     def __init__(self):
-
         # make the window for the game
         # self.screen is a Surface
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -119,22 +118,26 @@ class Game(object):
 
         self.character = Character()
 
+        # make a Group of Gem sprites
         self.gems = self.create_gems()
 
-        # special type of group that allows only rendering "dirty" areas of the screen
-        # kind of a useless optimization for any modern hardware
+        # special type of Group that allows only rendering "dirty" areas of the screen
+        # this is unnecessary for modern hardware, which should be able to
+        # redraw the whole screen each frame without struggling
         self.all_sprites = pygame.sprite.RenderUpdates(self.character, *self.gems.sprites())
 
         self.clock = pygame.time.Clock()
 
     def run(self):
-        # set self.running to False to end the game
+        """ Call this method to start the game loop. """
+        # set self.running to False (through exit_game) to end the game
         self.running = True
         while self.running:
             self.loop()
 
     def loop(self):
         """ Run all aspects of one frame. """
+
         self.handle_events()
         self.handle_collisions()
 
@@ -156,8 +159,7 @@ class Game(object):
         pygame.event.pump()
 
         # quit if the OS asks the window to close
-        event_types = [e.type for e in pygame.event.get()]
-        if pygame.QUIT in event_types:
+        if pygame.QUIT in [e.type for e in pygame.event.get()]:
             self.exit_game()
 
     def handle_collisions(self):
@@ -167,8 +169,7 @@ class Game(object):
 
     def render(self):
         """ Perform everything that needs to be done to draw all changes. """
-
-        # clear everything
+        # clear dirty areas left by sprites' previous locations
         # comment out this line to see why it's necessary :P
         self.all_sprites.clear(self.screen, self.background)
         # draw everything
@@ -178,14 +179,13 @@ class Game(object):
 
     def create_gems(self):
         """ Return a Group of Game.GEM_NUMBER gems. """
-
         gems = pygame.sprite.Group()
         for _ in range(Game.GEM_NUMBER):
             gems.add(Gem())
-
         return gems
 
     def exit_game(self):
+        """ Stop the game after the current loop finishes. """
         self.running = False
 
 
