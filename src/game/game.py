@@ -100,65 +100,6 @@ class Character(AbstractSprite):
         print(self, "scored!")
 
 
-class Bot(Character):
-    """
-    Attempt to simulate realistic player movements for testing.
-
-    This class could be removed in the final version or alternatively, if the
-    AI is good enough, could serve as a backup in cases where there are not
-    enough human players for an interesting game.
-    """
-
-    # minimum time between bot direction changes
-    COOLDOWN = int(round(0.5 * FPS)) # seconds converted to frames
-
-    def __init__(self, gems: pygame.sprite.Group):
-        super().__init__()
-
-        # Luckily this happens to update
-        # This is where I wish Python had pointers :P
-        self.gems = gems
-
-        self.dpos = np.zeros(2)
-        # function to convert the dpos to pi/4 increments to simulate the limitations
-        # of keyboard arrow movement
-        self.confine_angle = np.vectorize(lambda dim: round(dim, 0))
-        # track how many frames until a move is allowed
-        self.move_timer = 0
-
-    def distance(self, pos: np.ndarray):
-        """ Return the distance in pixels between self.pos and pos. """
-        return np.sqrt(((self.pos-pos)**2).sum())
-
-    def update(self):
-        if not self.gems:
-            return
-
-        # only continue to change direction if we are past the cooldown between moves
-        self.move_timer -= 1
-        if self.move_timer <= 0:
-            self.move_timer = Bot.COOLDOWN
-
-            # pursue the closest gem
-
-            # find which gem is closest
-            # I gotta clean this up somehow
-            gem_sprites = self.gems.sprites()
-            closest: Tuple[Gem, float] = (gem_sprites[0], self.distance(gem_sprites[0].rect.center))
-            for gem in gem_sprites[1:]:
-                d = self.distance(gem.rect.center)
-                if d < closest[1]:
-                    closest = (gem, d)
-
-            self.dpos = closest[0].rect.center-self.pos
-            # normalize because confine_angle needs each dimension to be on a scale of -1 to 1
-            self.dpos /= np.sqrt((self.dpos**2).sum()) or 1
-            self.dpos = self.confine_angle(self.dpos)
-
-        # move regardless of whether dpos has changed
-        super().move(self.dpos)
-
-
 class Player(Character):
     """ A Character that can be controlled locally by the keyboard. """
 
@@ -205,9 +146,8 @@ class Game(object):
 
         # make Groups
         self.gems = self.create_gems()
-        self.bots = self.create_bots()
         # in the future, add other human players to this group
-        self.characters = pygame.sprite.Group(self.player, *self.bots)
+        self.characters = pygame.sprite.Group(self.player)
 
         # special type of Group that allows only rendering "dirty" areas of the screen
         # this is unnecessary for modern hardware, which should be able to
@@ -280,13 +220,6 @@ class Game(object):
         for _ in range(Game.GEM_NUMBER):
             gems.add(Gem())
         return gems
-
-    def create_bots(self):
-        """ Return a Group of Game.BOT_NUMBER bots. """
-        bots = pygame.sprite.Group()
-        for _ in range(Game.BOT_NUMBER):
-            bots.add(Bot(self.gems))
-        return bots
 
     def exit_game(self):
         """ Stop the game after the current loop finishes. """
