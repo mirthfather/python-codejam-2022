@@ -48,8 +48,8 @@ class Gem(AbstractSprite):
 class Character(AbstractSprite):
     """ A character controlled by a player. """
 
-    # pixels per second, converted to pixels per frame
-    SPEED = 150 / FPS
+    # pixels per second per second, converted to pixels per frame per frame
+    THRUST = 50 * FPS**(-2)
 
     WIDTH = 25
     HEIGHT = 25
@@ -65,32 +65,39 @@ class Character(AbstractSprite):
         self.pos = np.array((random.uniform(Character.WIDTH/2, WIDTH-(Character.WIDTH/2)),
                              random.uniform(Character.HEIGHT/2, HEIGHT-(Character.HEIGHT/2))))
 
+        self.velocity = np.zeros(2)
+
         self.score = 0
 
-    def move(self, dpos: np.ndarray):
-        """ Correct the speed of the dpos and move the character accordingly. """
+    def move(self, thrust: np.ndarray):
+        """ Correct the magnitude of the thrust and move the character accordingly. """
 
         # normalize the direction so that moving diagonally does not move faster
-        # this is done by dividing the dpos by its magnitude
+        # this is done by dividing the thrust by its magnitude
         # the 'or 1' causes division by 1 if the magnitude is 0 to avoid zero division errors
         #
-        # Note: if it is possible to standardize dposes on a scale of 0 to 1,
+        # Note: if it is possible to standardize thrusts on a scale of 0 to 1,
         #       this could be optimized by dividing by sqrt(2) or not at all
-        dpos /= np.sqrt((dpos**2).sum()) or 1
+        thrust /= np.sqrt((thrust**2).sum()) or 1
         # now set the speed
-        dpos *= Character.SPEED
+        thrust *= Character.THRUST
 
-        self.pos += dpos
+        self.velocity += thrust
+        self.pos += self.velocity
 
         # prevent the character from going off the screen
         # Keep in mind that it is not the center that must not go off screen, but rather any part of the character.
         # Hence the multiple appearances of WIDTH / 2 and HEIGHT / 2.
         # These next two lines could be combined, but they are already basically unreadable as is. :P
 
+        pos_before_correction = self.pos.copy()
         # set the maximum x and y to screen width and height
         self.pos = np.minimum((WIDTH-(Character.WIDTH/2), HEIGHT-(Character.HEIGHT/2)), self.pos)
         # set the minimum x and y to zero
         self.pos = np.maximum((Character.WIDTH/2, Character.HEIGHT/2), self.pos)
+        # set velocity to zero after running into the edge of the screen
+        if (pos_before_correction != self.pos).any():
+            self.velocity = np.zeros(2)
 
         # changing the rect's center automatically changes the sprite's position
         self.rect.center = self.pos
@@ -109,19 +116,19 @@ class Player(Character):
         super().__init__(color=Player.COLOR)
 
     def update(self):
-        # change in position (dx, dy)
-        dpos = np.zeros(2)
+        # acceleration
+        thrust = np.zeros(2)
 
         if pygame.key.get_pressed()[pygame.K_LEFT]:
-            dpos[0] = -1
+            thrust[0] = -1
         if pygame.key.get_pressed()[pygame.K_RIGHT]:
-            dpos[0] = 1
+            thrust[0] = 1
         if pygame.key.get_pressed()[pygame.K_UP]:
-            dpos[1] = -1
+            thrust[1] = -1
         if pygame.key.get_pressed()[pygame.K_DOWN]:
-            dpos[1] = 1
+            thrust[1] = 1
 
-        super().move(dpos)
+        super().move(thrust)
 
 
 class Game(object):
