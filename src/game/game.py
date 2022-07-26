@@ -137,8 +137,6 @@ class Game(object):
     # how many gems to start the game with
     GEM_NUMBER = 10
 
-    BOT_NUMBER = 3
-
     def __init__(self):
         # make the window for the game
         # self.screen is a Surface
