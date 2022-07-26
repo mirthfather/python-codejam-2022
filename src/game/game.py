@@ -5,7 +5,7 @@ import random
 from typing import Tuple
 
 # width and height of the screen in pixels
-# fullscreen window of variable size is certainly possible
+# a fullscreen window of variable size would be possible
 WIDTH = 640
 HEIGHT = 480
 
@@ -34,7 +34,6 @@ class Gem(AbstractSprite):
     WIDTH = 10
     HEIGHT = 10
 
-    # suck it, British people
     COLOR = (0, 255, 0)
 
     def __init__(self):
@@ -62,9 +61,11 @@ class Character(AbstractSprite):
                          Character.COLOR if color is None else color)
 
         # track position independently of the rect, enabling floating-point precision
+        # place the character in a random starting spot (maybe assigned by the server in the future?)
         self.pos = np.array((random.uniform(Character.WIDTH/2, WIDTH-(Character.WIDTH/2)),
                              random.uniform(Character.HEIGHT/2, HEIGHT-(Character.HEIGHT/2))))
 
+        # pixels per second
         self.velocity = np.zeros(2)
 
         self.score = 0
@@ -79,23 +80,24 @@ class Character(AbstractSprite):
         # Note: if it is possible to standardize thrusts on a scale of 0 to 1,
         #       this could be optimized by dividing by sqrt(2) or not at all
         thrust /= np.sqrt((thrust**2).sum()) or 1
-        # now set the speed
+        # The previous line normalized the thrust's magnitude to 1. Now we
+        # change that magnitude to Character.THRUST simply by multiplication.
         thrust *= Character.THRUST
 
         self.velocity += thrust
         self.pos += self.velocity
 
         # prevent the character from going off the screen
-        # Keep in mind that it is not the center that must not go off screen, but rather any part of the character.
-        # Hence the multiple appearances of WIDTH / 2 and HEIGHT / 2.
-        # These next two lines could be combined, but they are already basically unreadable as is. :P
-
+        #
+        # Keep in mind that it is not the center that must not go off screen,
+        # but rather any part of the character, hence the multiple appearances
+        # of WIDTH / 2 and HEIGHT / 2.
         pos_before_correction = self.pos.copy()
-        # set the maximum x and y to screen width and height
-        self.pos = np.minimum((WIDTH-(Character.WIDTH/2), HEIGHT-(Character.HEIGHT/2)), self.pos)
-        # set the minimum x and y to zero
-        self.pos = np.maximum((Character.WIDTH/2, Character.HEIGHT/2), self.pos)
+        self.pos = np.minimum((WIDTH-(Character.WIDTH/2), HEIGHT-(Character.HEIGHT/2)),
+                               np.maximum((Character.WIDTH/2, Character.HEIGHT/2), self.pos))
         # set velocity to zero after running into the edge of the screen
+        #
+        # The != generates a new array of booleans, hence the .any
         if (pos_before_correction != self.pos).any():
             self.velocity = np.zeros(2)
 
@@ -103,6 +105,7 @@ class Character(AbstractSprite):
         self.rect.center = self.pos
 
     def increment_score(self):
+        """ Increase this Character's score by 1. """
         self.score += 1
         print(self, "scored!")
 
@@ -116,13 +119,17 @@ class Player(Character):
         super().__init__(color=Player.COLOR)
 
     def update(self):
-        # acceleration
+        """ This method is called every frame. """
+
+        # acceleration vector
+        # This only provides direction; magnitude is calculated in Character.move
         thrust = np.zeros(2)
 
         if pygame.key.get_pressed()[pygame.K_LEFT]:
             thrust[0] = -1
         if pygame.key.get_pressed()[pygame.K_RIGHT]:
             thrust[0] = 1
+        # in pygame coordinates, up is negative and down is positive
         if pygame.key.get_pressed()[pygame.K_UP]:
             thrust[1] = -1
         if pygame.key.get_pressed()[pygame.K_DOWN]:
