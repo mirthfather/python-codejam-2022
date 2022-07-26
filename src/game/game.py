@@ -182,7 +182,7 @@ class Game(object):
         # if no gem sprites remain, quit
         if not self.gems:
             winner = sorted(self.characters.sprites(), key=lambda c: c.score, reverse=True)[0]
-            print("You won!" if winner == self.player else f"{winner} won!")
+            print("You" if winner == self.player else winner, f"won with a score of {winner.score}!")
             self.exit_game()
 
         self.render()
