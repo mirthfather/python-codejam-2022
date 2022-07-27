@@ -2,7 +2,7 @@ import numpy as np
 import pygame
 import random
 
-from typing import Tuple
+from typing import Tuple, Union
 
 # width and height of the screen in pixels
 # a fullscreen window of variable size would be possible
@@ -26,22 +26,6 @@ class AbstractSprite(pygame.sprite.Sprite):
 
         # rect is also a specially recognized Sprite attribute
         self.rect = self.image.get_rect()
-
-
-class Gem(AbstractSprite):
-    """ A gem for a character to pick up. """
-
-    WIDTH = 10
-    HEIGHT = 10
-
-    COLOR = (0, 255, 0)
-
-    def __init__(self):
-        super().__init__(Gem.WIDTH, Gem.HEIGHT, Gem.COLOR)
-
-        # place the Gem in a random spot on the screen
-        self.rect.center = (random.randint(Gem.WIDTH/2, WIDTH-(Gem.WIDTH/2)),
-                            random.randint(Gem.HEIGHT/2, HEIGHT-(Gem.HEIGHT/2)))
 
 
 class Character(AbstractSprite):
@@ -138,6 +122,95 @@ class Player(Character):
         super().move(thrust)
 
 
+class Gem(AbstractSprite):
+    """ A gem for a character to pick up. """
+
+    WIDTH = 10
+    HEIGHT = 10
+
+    COLOR = (0, 255, 0)
+    DEAD_COLOR = (255, 0, 0)
+
+    # how long the Sprite should flash after being picked up
+    # seconds, converted to frames
+    DEAD_TIME = 0.5 * FPS
+    # how long each flash when dead is in seconds, converted to frames
+    DEAD_FLASH_TIME = 0.15 * FPS
+
+    # how long it takes a Character to pick up a Gem
+    # seconds, converted to frames
+    PICKUP_TIME = 0.5 * FPS
+
+    def __init__(self):
+        super().__init__(Gem.WIDTH, Gem.HEIGHT, Gem.COLOR)
+
+        # place the Gem in a random spot on the screen
+        self.rect.center = (random.randint(Gem.WIDTH/2, WIDTH-(Gem.WIDTH/2)),
+                            random.randint(Gem.HEIGHT/2, HEIGHT-(Gem.HEIGHT/2)))
+
+        # number of frames until gem is picked up by a character
+        self.until_dead = Gem.PICKUP_TIME
+        # used to track if the owner has left
+        self.prev_until_dead = self.until_dead
+        self.dead_timer = Gem.DEAD_TIME
+
+        self.owner: Union[Character, None] = None
+
+    def update(self) -> None:
+        """ Called every frame. """
+
+        # if this gem has already been picked up
+        if self.until_dead <= 0:
+            self.dead_timer -= 1
+            if self.dead_timer <= 0:
+                # built-in Sprite method that removes this Sprite from all groups
+                self.kill()
+
+            # toggle transparency/opaqueness to create a flashing effect
+            if self.dead_timer % Gem.DEAD_FLASH_TIME == 0:
+                # set alpha to 255 if it's currently 0 and 0 if it's currently 255
+                self.image.set_alpha(255 - self.image.get_alpha())
+
+        # if this gem has not yet been picked up
+        else:
+            # change transparency based on until_dead value
+            self.image.set_alpha((self.until_dead/Gem.PICKUP_TIME) * 255)
+
+            # reset the counter if the owner has left
+            # this is triggered by noticing that until_dead has not been decremented
+            if self.prev_until_dead == self.until_dead:
+                self.owner = None
+                self.until_dead = Gem.PICKUP_TIME
+
+            self.prev_until_dead = self.until_dead
+
+    def on_collide(self, character: Character) -> None:
+        """
+        Call each frame when the gem is colliding with at least one Character.
+
+        Automatically increments the correct score if necessary.
+        """
+
+        # if this gem is not currently being picked up
+        if self.until_dead == Gem.PICKUP_TIME:
+            # assign a new owner
+            self.owner = character
+            self.until_dead -= 1
+        # if this gem is already being picked up
+        else:
+            self.until_dead -= 1
+            if self.until_dead <= 0:
+                self.die()
+                self.owner.increment_score()
+
+    def die(self):
+        """ Prepare for the "flashing after death" state. """
+        # change the gem's color
+        self.image.fill(Gem.DEAD_COLOR)
+        # make the gem opaque
+        self.image.set_alpha(255)
+
+
 class Game(object):
     """ Object to handle all game-level tasks. """
 
@@ -210,11 +283,15 @@ class Game(object):
         I suppose this will eventually be handled by the server, unless we decide
         to trust clients to check their own collisions and send those to the server.
         """
-        for character in pygame.sprite.groupcollide(self.characters,
-                                                    self.gems,
-                                                    False,
-                                                    True):
-            character.increment_score()
+        for character, gems in pygame.sprite.groupcollide(self.characters,
+                                                          self.gems,
+                                                          False,
+                                                          False).items():
+            for gem in gems:
+                # if the gem hasn't already been picked up
+                if gem.until_dead > 0:
+                    # handles scoring and other collision logic
+                    gem.on_collide(character)
 
     def render(self):
         """ Perform everything that needs to be done to draw all changes. """
