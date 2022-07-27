@@ -102,8 +102,13 @@ class Player(Character):
     def __init__(self):
         super().__init__(color=Player.COLOR)
 
+        self.thrust_history = np.zeros((1*FPS, 2))
+
     def update(self):
         """ This method is called every frame. """
+
+        # move every element back by 1
+        self.thrust_history = np.roll(self.thrust_history, -1, axis=0)
 
         # acceleration vector
         # This only provides direction; magnitude is calculated in Character.move
@@ -119,7 +124,9 @@ class Player(Character):
         if pygame.key.get_pressed()[pygame.K_DOWN]:
             thrust[1] = 1
 
-        super().move(thrust)
+        self.thrust_history[-1] = thrust
+
+        super().move(self.thrust_history[0])
 
 
 class Gem(AbstractSprite):
