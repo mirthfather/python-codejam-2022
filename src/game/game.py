@@ -1,8 +1,8 @@
+import random
+from typing import Tuple, Union
+
 import numpy as np
 import pygame
-import random
-
-from typing import Tuple, Union
 
 # width and height of the screen in pixels
 # a fullscreen window of variable size would be possible
@@ -39,7 +39,7 @@ class Character(AbstractSprite):
 
     COLOR = (255, 0, 0)
 
-    def __init__(self, color: Tuple[int]=None):
+    def __init__(self, color: Tuple[int] = None):
         super().__init__(Character.WIDTH,
                          Character.HEIGHT,
                          Character.COLOR if color is None else color)
@@ -77,8 +77,10 @@ class Character(AbstractSprite):
         # but rather any part of the character, hence the multiple appearances
         # of WIDTH / 2 and HEIGHT / 2.
         pos_before_correction = self.pos.copy()
-        self.pos = np.minimum((WIDTH-(Character.WIDTH/2), HEIGHT-(Character.HEIGHT/2)),
-                               np.maximum((Character.WIDTH/2, Character.HEIGHT/2), self.pos))
+        self.pos = np.minimum((
+            WIDTH-(Character.WIDTH/2), HEIGHT-(Character.HEIGHT/2)),
+            np.maximum((Character.WIDTH/2, Character.HEIGHT/2), self.pos)
+        )
         # set velocity to zero after running into the edge of the screen
         #
         # The != generates a new array of booleans, hence the .any
