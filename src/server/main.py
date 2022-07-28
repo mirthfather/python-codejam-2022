@@ -7,7 +7,7 @@ import websockets
 async def game_server(sock):
     """Main gameserver message handler"""
     async for msg in sock:
-        await sock.send("Not implemented")
+        await sock.send(msg[0])
 
 
 async def main():
