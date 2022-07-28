@@ -15,5 +15,11 @@ async def main():
     async with websockets.serve(game_server, "0.0.0.0", 7890):
         await asyncio.Future()
 
-if __name__ == "__main__":
+
+def run():
+    """Run main with asyncio.run"""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()
