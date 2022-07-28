@@ -1,17 +1,22 @@
+"""
+Each frame send a single keypress to the server.
+Each frame retrieve multiple keypresses from the server (one per player).
+Each frame process the keypresses from the server. 
+"""
+
 import asyncio
 import websockets
 
 async def send_and_recieve(keypress):
     async with websockets.connect("ws://localhost:8765") as websocket:
         await websocket.send(keypress)
-        async for message in websocket:
-            print(message)
+        async for key in websocket:
+            await update_game_from_server_keypress(key)
 
-async def main(queue):
-    tasks = []
-    for key in queue:
-        tasks.append(asyncio.create_task(send_and_recieve(key)))
-    await asyncio.gather(*tasks, return_exceptions=True)
+async def update_game_from_server_keypress(keypress):
+    print(f'handle server response {keypress}')
 
-q = ["Left", "Right", "Up", "Down", "Left", "Right", "Up", "Down", "Left", "Right", "Up", "Down"]
-asyncio.run(main(q))
+if __name__ == "__main__":
+    asyncio.run(send_and_recieve("Left"))
+
+
