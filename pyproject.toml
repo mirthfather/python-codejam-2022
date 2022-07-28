@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synergistic-sylphs"
+version = "1.0.0"
+description = "Python Codejam 2022 - Team Synergistic Sylphs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT License"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "numpy",
+    "pygame",
+    "websockets",
+]
+
+[project.scripts]
+server = "server.main:run"
+
+[project.gui-scripts]
+game = "game.game:main"
