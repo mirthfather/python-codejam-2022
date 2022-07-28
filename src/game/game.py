@@ -14,7 +14,7 @@ FPS = 60
 
 
 class AbstractSprite(pygame.sprite.Sprite):
-    """ An abstract class for shared code between Gem and Character. """
+    """An abstract class for shared code between Gem and Character."""
 
     def __init__(self, width, height, color):
         super().__init__()
@@ -29,7 +29,7 @@ class AbstractSprite(pygame.sprite.Sprite):
 
 
 class Character(AbstractSprite):
-    """ A character controlled by a player. """
+    """A character controlled by a player."""
 
     # pixels per second per second, converted to pixels per frame per frame
     THRUST = 50 * FPS**(-2)
@@ -55,8 +55,7 @@ class Character(AbstractSprite):
         self.score = 0
 
     def move(self, thrust: np.ndarray):
-        """ Correct the magnitude of the thrust and move the character accordingly. """
-
+        """Correct the magnitude of the thrust and move the character accordingly."""
         # normalize the direction so that moving diagonally does not move faster
         # this is done by dividing the thrust by its magnitude
         # the 'or 1' causes division by 1 if the magnitude is 0 to avoid zero division errors
@@ -91,13 +90,13 @@ class Character(AbstractSprite):
         self.rect.center = self.pos
 
     def increment_score(self):
-        """ Increase this Character's score by 1. """
+        """Increase this Character's score by 1."""
         self.score += 1
         print(self, "scored!")
 
 
 class Player(Character):
-    """ A Character that can be controlled locally by the keyboard. """
+    """A Character that can be controlled locally by the keyboard."""
 
     COLOR = (0, 255, 255)
 
@@ -105,8 +104,7 @@ class Player(Character):
         super().__init__(color=Player.COLOR)
 
     def update(self):
-        """ This method is called every frame. """
-
+        """This method is called every frame."""
         # acceleration vector
         # This only provides direction; magnitude is calculated in Character.move
         thrust = np.zeros(2)
@@ -125,7 +123,7 @@ class Player(Character):
 
 
 class Gem(AbstractSprite):
-    """ A gem for a character to pick up. """
+    """A gem for a character to pick up."""
 
     WIDTH = 10
     HEIGHT = 10
@@ -159,8 +157,7 @@ class Gem(AbstractSprite):
         self.owner: Union[Character, None] = None
 
     def update(self) -> None:
-        """ Called every frame. """
-
+        """Called every frame."""
         # if this gem has already been picked up
         if self.until_dead <= 0:
             self.dead_timer -= 1
@@ -192,7 +189,6 @@ class Gem(AbstractSprite):
 
         Automatically increments the correct score if necessary.
         """
-
         # if this gem is not currently being picked up
         if self.until_dead == Gem.PICKUP_TIME:
             # assign a new owner
@@ -206,7 +202,7 @@ class Gem(AbstractSprite):
                 self.owner.increment_score()
 
     def die(self):
-        """ Prepare for the "flashing after death" state. """
+        """Prepare for the "flashing after death" state."""
         # change the gem's color
         self.image.fill(Gem.DEAD_COLOR)
         # make the gem opaque
@@ -214,7 +210,7 @@ class Gem(AbstractSprite):
 
 
 class Game(object):
-    """ Object to handle all game-level tasks. """
+    """Object to handle all game-level tasks."""
 
     # how many gems to start the game with
     GEM_NUMBER = 10
@@ -244,15 +240,14 @@ class Game(object):
         self.clock = pygame.time.Clock()
 
     def run(self):
-        """ Call this method to start the game loop. """
+        """Call this method to start the game loop."""
         # set self.running to False (through exit_game) to end the game
         self.running = True
         while self.running:
             self.loop()
 
     def loop(self):
-        """ Run all aspects of one frame. """
-
+        """Run all aspects of one frame."""
         self.handle_events()
         self.handle_collisions()
 
@@ -270,7 +265,7 @@ class Game(object):
         self.clock.tick(FPS)
 
     def handle_events(self):
-        """ Run pygame.event.pump() and close upon window close. """
+        """Run pygame.event.pump() and close upon window close."""
         # listen for new keyboard and mouse events
         pygame.event.pump()
 
@@ -296,7 +291,7 @@ class Game(object):
                     gem.on_collide(character)
 
     def render(self):
-        """ Perform everything that needs to be done to draw all changes. """
+        """Perform everything that needs to be done to draw all changes."""
         # clear dirty areas left by sprites' previous locations
         # comment out this line to see why it's necessary :P
         self.all_sprites.clear(self.screen, self.background)
@@ -306,18 +301,19 @@ class Game(object):
         pygame.display.update(dirty)
 
     def create_gems(self):
-        """ Return a Group of Game.GEM_NUMBER gems. """
+        """Return a Group of Game.GEM_NUMBER gems."""
         gems = pygame.sprite.Group()
         for _ in range(Game.GEM_NUMBER):
             gems.add(Gem())
         return gems
 
     def exit_game(self):
-        """ Stop the game after the current loop finishes. """
+        """Stop the game after the current loop finishes."""
         self.running = False
 
 
 def main():
+    """Function that runs the game."""
     # initialize all pygame modules
     pygame.init()
 
