@@ -1,7 +1,8 @@
 import random
-from typing import Tuple, Union
+from typing import Callable, Tuple, Union
 
 import numpy as np
+import numpy.typing
 import pygame
 
 # width and height of the screen in pixels
@@ -38,6 +39,10 @@ class Character(AbstractSprite):
     HEIGHT = 25
 
     COLOR = (255, 0, 0)
+
+    # time between firing projectiles
+    # seconds, converted to frames
+    COOLDOWN = 2.0 * FPS
 
     def __init__(self, color: Tuple[int] = None):
         super().__init__(Character.WIDTH,
@@ -94,17 +99,30 @@ class Character(AbstractSprite):
         self.score += 1
         print(self, "scored!")
 
+    def decrement_score(self):
+        """Decrease this Character's score by 1, to a minimum of 0."""
+        self.score = max(self.score-1, 0)
+
 
 class Player(Character):
     """A Character that can be controlled locally by the keyboard."""
 
     COLOR = (0, 255, 255)
 
-    def __init__(self):
+    def __init__(self, make_projectile: Callable[[Character, np.ndarray, np.ndarray], None]):
         super().__init__(color=Player.COLOR)
+
+        self.make_projectile = make_projectile
+
+        self.reload_timer = 0
 
     def update(self):
         """This method is called every frame."""
+        self.reload_timer -= 1
+
+        if pygame.key.get_pressed()[pygame.K_SPACE] and self.reload_timer <= 0:
+            self.fire()
+
         # acceleration vector
         # This only provides direction; magnitude is calculated in Character.move
         thrust = np.zeros(2)
@@ -120,6 +138,66 @@ class Player(Character):
             thrust[1] = 1
 
         super().move(thrust)
+
+    def fire(self):
+        """Fire a projectile."""
+        self.reload_timer = Character.COOLDOWN
+        self.make_projectile(self, self.pos, self.velocity)
+
+
+class Projectile(AbstractSprite):
+    """A projectile fired by characters that causes other characters to drop a gem."""
+
+    WIDTH = 25
+    HEIGHT = 5
+
+    COLOR = (255, 255, 0)
+
+    # pixels per second, converted to pixels per frame
+    SPEED = 200 / FPS
+
+    # time before disappearing if no target is hit
+    # seconds, converted to frames
+    LIFETIME = 2.0 * FPS
+
+    def __init__(self, owner: Character, pos: np.ndarray, initial_velocity: np.ndarray) -> None:
+        super().__init__(Projectile.WIDTH, Projectile.HEIGHT, Projectile.COLOR)
+
+        # used to ensure projectiles don't immediately collide with whoever shot them
+        self.owner = owner
+
+        # if the pixel format does not include alpha, then rotating the image just
+        # makes it wider
+        self.image = self.image.convert_alpha()
+        # rotate the Surface to make it look like it was aimed by the Character
+        self.image = pygame.transform.rotate(
+            self.image,
+            (180 / np.pi)
+            # the 'or 1' avoids division by zero errors
+            * np.arctan(-initial_velocity[1]/(initial_velocity[0] or 1))
+            # adding 180 prevents the projectile from being rendered upside-
+            # down, which is probably not an issue
+            + (180 if initial_velocity[0] < 0 else 0)
+        )
+
+        # normalized initial velocity - used for direction
+        niv = initial_velocity / (np.sqrt((initial_velocity**2).sum()) or 1)
+        self.velocity = initial_velocity + (niv * Projectile.SPEED)
+
+        self.pos = pos
+        self.rect.center = self.pos
+
+        self.life_timer = Projectile.LIFETIME
+
+    def update(self):
+        """Called every frame."""
+        self.pos += self.velocity
+        self.rect.center = self.pos
+
+        self.life_timer -= 1
+        if self.life_timer <= 0:
+            # built-in method that removes this sprite from all groups
+            self.kill()
 
 
 class Gem(AbstractSprite):
@@ -141,12 +219,15 @@ class Gem(AbstractSprite):
     # seconds, converted to frames
     PICKUP_TIME = 0.5 * FPS
 
-    def __init__(self):
+    def __init__(self, pos: numpy.typing.ArrayLike = None):
         super().__init__(Gem.WIDTH, Gem.HEIGHT, Gem.COLOR)
 
-        # place the Gem in a random spot on the screen
-        self.rect.center = (random.randint(Gem.WIDTH/2, WIDTH-(Gem.WIDTH/2)),
-                            random.randint(Gem.HEIGHT/2, HEIGHT-(Gem.HEIGHT/2)))
+        if pos is None:
+            # place the Gem in a random spot on the screen
+            self.rect.center = (random.randint(Gem.WIDTH/2, WIDTH-(Gem.WIDTH/2)),
+                                random.randint(Gem.HEIGHT/2, HEIGHT-(Gem.HEIGHT/2)))
+        else:
+            self.rect.center = pos
 
         # number of frames until gem is picked up by a character
         self.until_dead = Gem.PICKUP_TIME
@@ -225,12 +306,13 @@ class Game(object):
         self.background = pygame.Surface(self.screen.get_size())
         self.background.fill((0, 0, 0))
 
-        self.player = Player()
+        self.player = Player(self.make_projectile)
 
         # make Groups
         self.gems = self.create_gems()
         # in the future, add other human players to this group
         self.characters = pygame.sprite.Group(self.player)
+        self.projectiles = pygame.sprite.Group()
 
         # special type of Group that allows only rendering "dirty" areas of the screen
         # this is unnecessary for modern hardware, which should be able to
@@ -290,6 +372,19 @@ class Game(object):
                     # handles scoring and other collision logic
                     gem.on_collide(character)
 
+        for character, projectiles in pygame.sprite.groupcollide(self.characters,
+                                                                 self.projectiles,
+                                                                 False,
+                                                                 False).items():
+            for projectile in projectiles:
+                # if the character is not the one who shot the projectile
+                if character != projectile.owner:
+                    projectile.kill()
+                    character.decrement_score()
+                    gem = Gem(character.pos)
+                    self.gems.add(gem)
+                    self.all_sprites.add(gem)
+
     def render(self):
         """Perform everything that needs to be done to draw all changes."""
         # clear dirty areas left by sprites' previous locations
@@ -306,6 +401,12 @@ class Game(object):
         for _ in range(Game.GEM_NUMBER):
             gems.add(Gem())
         return gems
+
+    def make_projectile(self, character, pos, velocity):
+        """Create a projectile based on a character's position and velocity."""
+        p = Projectile(character, pos, velocity)
+        self.projectiles.add(p)
+        self.all_sprites.add(p)
 
     def exit_game(self):
         """Stop the game after the current loop finishes."""
