@@ -17,6 +17,7 @@ async def main():
 
 
 def run():
+    """Run main with asyncio.run"""
     asyncio.run(main())
 
 
