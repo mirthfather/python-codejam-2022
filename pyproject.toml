@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-server = "server.main:run"
+syn-sylphs-server = "server.main:run"
 
 [project.gui-scripts]
-game = "game.game:main"
+syn-sylphs-game = "game.game:main"
