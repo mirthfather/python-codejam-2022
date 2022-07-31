@@ -6,6 +6,7 @@ from typing import Tuple, Union
 import numpy as np
 import pygame
 import websockets
+import argparse
 
 # width and height of the screen in pixels
 # a fullscreen window of variable size would be possible
@@ -243,13 +244,12 @@ class Game(object):
 
         self.clock = pygame.time.Clock()
 
-    async def startup(self):
+    async def startup(self, server_addr):
         """Connect to the server and start game loop"""
         # set self.running to False (through exit_game) to end the game
         self.running = True
-        server_host = 'de.jjolly.dev:7890'
 
-        async with websockets.connect(f'ws://{server_host}') as ws:
+        async with websockets.connect(f'ws://{server_addr}') as ws:
             # Verify version match with server
             await ws.send(json.dumps({
                 "version": 1.0
@@ -257,15 +257,15 @@ class Game(object):
 
             hello = json.loads(await ws.recv())
             if "error" in hello:
-                print(f'Server "{server_host}" failed connection with error: {hello["error"]}')
+                print(f'Server "{server_addr}" failed connection with error: {hello["error"]}')
                 return
 
             if "version" not in hello:
-                print(f'Server "{server_host}" did not send version identifier')
+                print(f'Server "{server_addr}" did not send version identifier')
                 return
 
             if hello["version"] > 1.0:
-                print(f'Server "{server_host}" report advanced version v{hello["version"]}. Please update the client')
+                print(f'Server "{server_addr}" report advanced version v{hello["version"]}. Please update the client')
                 return
 
             game_loop = asyncio.create_task(self.run())
@@ -344,14 +344,18 @@ class Game(object):
         self.running = False
 
 
-def main():
+def main(server_addr):
     """Function that runs the game."""
     # initialize all pygame modules
     pygame.init()
 
     game = Game()
-    asyncio.run(game.startup())
+    asyncio.run(game.startup(server_addr))
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description='Game of Lag')
+    ap.add_argument('-s', '--server', default='de.jjolly.dev')
+    ap.add_argument('-p', '--port', type=int, default=7890)
+    args = ap.parse_args()
+    main(f'{args.server}:{args.port}')
