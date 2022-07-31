@@ -2,7 +2,9 @@ import argparse
 import asyncio
 import json
 import random
-from typing import Tuple, Union
+import uuid
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import pygame
@@ -17,11 +19,38 @@ HEIGHT = 480
 FPS = 60
 
 
+@dataclass
+class SpriteData:
+    """Class to represent the current state data of a character or gem."""
+
+    # common attributes
+    sprite_id: str
+    pos: tuple[float, float]
+    # Character attributes
+    velocity: Optional[tuple[float, float]]
+    score: Optional[int]
+    # Gem attributes
+    until_dead: Optional[float]
+    prev_until_dead: Optional[float]
+    dead_timer: Optional[float]
+    owner_id: Optional[str]
+    alive: Optional[bool]
+
+
 class AbstractSprite(pygame.sprite.Sprite):
     """An abstract class for shared code between Gem and Character."""
 
-    def __init__(self, width, height, color):
+    def __init__(
+        self,
+        game: 'Game',
+        sprite_id: str,
+        width: int,
+        height: int,
+        color: pygame.Color
+    ):
         super().__init__()
+        self.game: Game = game
+        self.sprite_id: str = sprite_id
 
         # image is a specially recognized Sprite attribute
         # for now, it is a solid color, but pygame.image.load returns an image as a Surface
@@ -29,7 +58,47 @@ class AbstractSprite(pygame.sprite.Sprite):
         self.image.fill(color)
 
         # rect is also a specially recognized Sprite attribute
-        self.rect = self.image.get_rect()
+        self.rect: pygame.Rect = self.image.get_rect()
+
+    def report(self) -> SpriteData:
+        """
+        Report the current state of this sprite as SpriteData.
+
+        :return: the current state
+        """
+        pass
+
+    @classmethod
+    def from_spritedata(cls, game: 'Game', data: SpriteData) -> 'AbstractSprite':
+        """
+        Instantiate an object of this class for a given game using SpriteData.
+
+        :param game: the current game
+        :param data: the state to use
+        :return: the new object
+        """
+        pass
+
+    def update_spritedata(self, data: SpriteData) -> None:
+        """
+        Update the state of a sprite using SpriteData.
+
+        :param data: the state to use
+        :return: None
+        """
+        pass
+
+    def check_sprite_id(self, sprite_id: str) -> None:
+        """
+        Validate a sprite ID against this object's sprite ID.
+
+        Raise ValueError if they do not match.
+
+        :param sprite_id: the ID to check
+        :return: None
+        """
+        if sprite_id != self.sprite_id:
+            raise ValueError('mismatched sprite ID')
 
 
 class Character(AbstractSprite):
@@ -43,10 +112,14 @@ class Character(AbstractSprite):
 
     COLOR = (255, 0, 0)
 
-    def __init__(self, color: Tuple[int] = None):
-        super().__init__(Character.WIDTH,
-                         Character.HEIGHT,
-                         Character.COLOR if color is None else color)
+    def __init__(self, game: 'Game', sprite_id: str):
+        super().__init__(
+            game,
+            sprite_id,
+            self.WIDTH,
+            self.HEIGHT,
+            pygame.Color(*self.COLOR)
+        )
 
         # track position independently of the rect, enabling floating-point precision
         # place the character in a random starting spot (maybe assigned by the server in the future?)
@@ -98,14 +171,80 @@ class Character(AbstractSprite):
         self.score += 1
         print(self, "scored!")
 
+    def report(self) -> SpriteData:
+        """
+        Report the current state of this sprite as SpriteData.
+
+        :return: the current state
+        """
+        return SpriteData(
+            # general attributes
+            self.sprite_id,
+            tuple(self.pos),
+            # Character attributes
+            tuple(self.velocity),
+            self.score,
+            # Gem attributes
+            None, None, None, None, None
+        )
+
+    @classmethod
+    def from_spritedata(cls, game: 'Game', data: SpriteData) -> 'Character':
+        """
+        Instantiate an object of this class for a given game using SpriteData.
+
+        :param game: the current game
+        :param data: the state to use
+        :return: the new object
+        """
+        obj = cls(game, data.sprite_id)
+        obj.update_spritedata(data)
+        return obj
+
+    def update_spritedata(self, data: SpriteData) -> None:
+        """
+        Update the state of a sprite using SpriteData.
+
+        :param data: the state to use
+        :return: None
+        """
+        self.check_sprite_id(data.sprite_id)
+
+        self.velocity = data.velocity
+        self.pos = data.pos
+        self.score = data.score
+
+
+class OtherPlayer(Character):
+    """A Character controlled by updates from the server."""
+
+    COLOR = (255, 0, 255)
+
+    def __init__(self, game: 'Game', sprite_id: str):
+        super().__init__(game, sprite_id)
+
+    def update(self,
+               pos: Tuple[float, float],
+               velocity: Tuple[float, float],
+               ):
+        """This method is called every frame."""
+        self.rect.center = np.array(pos)
+        self.velocity = np.array(velocity)
+
+
+class GhostPlayer(OtherPlayer):
+    """The ghost of the current player as reported by the server."""
+
+    COLOR = (0, 255, 255, 127)
+
 
 class Player(Character):
     """A Character that can be controlled locally by the keyboard."""
 
     COLOR = (0, 255, 255)
 
-    def __init__(self):
-        super().__init__(color=Player.COLOR)
+    def __init__(self, game: 'Game', sprite_id: str):
+        super().__init__(game, sprite_id)
 
     def update(self):
         """This method is called every frame."""
@@ -145,12 +284,15 @@ class Gem(AbstractSprite):
     # seconds, converted to frames
     PICKUP_TIME = 0.5 * FPS
 
-    def __init__(self):
-        super().__init__(Gem.WIDTH, Gem.HEIGHT, Gem.COLOR)
+    def __init__(self,
+                 game: 'Game',
+                 sprite_id: str,
+                 ):
+        super().__init__(game, sprite_id, Gem.WIDTH, Gem.HEIGHT, pygame.Color(Gem.COLOR))
 
         # place the Gem in a random spot on the screen
-        self.rect.center = (random.randint(Gem.WIDTH/2, WIDTH-(Gem.WIDTH/2)),
-                            random.randint(Gem.HEIGHT/2, HEIGHT-(Gem.HEIGHT/2)))
+        self.rect.center = (random.randint(Gem.WIDTH//2, WIDTH-(Gem.WIDTH//2)),
+                            random.randint(Gem.HEIGHT//2, HEIGHT-(Gem.HEIGHT//2)))
 
         # number of frames until gem is picked up by a character
         self.until_dead = Gem.PICKUP_TIME
@@ -159,6 +301,8 @@ class Gem(AbstractSprite):
         self.dead_timer = Gem.DEAD_TIME
 
         self.owner: Union[Character, None] = None
+
+        self.alive = True
 
     def update(self) -> None:
         """Called every frame."""
@@ -208,9 +352,60 @@ class Gem(AbstractSprite):
     def die(self):
         """Prepare for the "flashing after death" state."""
         # change the gem's color
-        self.image.fill(Gem.DEAD_COLOR)
+        self.image.fill(pygame.Color(Gem.DEAD_COLOR))
         # make the gem opaque
         self.image.set_alpha(255)
+
+        self.alive = False
+
+    def report(self) -> SpriteData:
+        """
+        Report the current state of this sprite as SpriteData.
+
+        :return: the current state
+        """
+        return SpriteData(
+            # general attributes
+            self.sprite_id,
+            self.rect.center,
+            # Character attributes
+            None, None,
+            # Gem attributes
+            self.until_dead,
+            self.prev_until_dead,
+            self.dead_timer,
+            self.owner.sprite_id,
+            self.alive
+        )
+
+    @classmethod
+    def from_spritedata(cls, game: 'Game', data: SpriteData) -> 'Gem':
+        """
+        Instantiate an object of this class for a given game using SpriteData.
+
+        :param game: the current game
+        :param data: the state to use
+        :return: the new object
+        """
+        obj = cls(game, data.sprite_id)
+        obj.update_spritedata(data)
+        return obj
+
+    def update_spritedata(self, data: SpriteData) -> None:
+        """
+        Update the state of a sprite using SpriteData.
+
+        :param data: the state to use
+        :return: None
+        """
+        self.check_sprite_id(data.sprite_id)
+
+        self.rect.center = data.pos
+        self.until_dead = data.until_dead
+        self.prev_until_dead = data.prev_until_dead
+        self.dead_timer = data.dead_timer
+        self.owner = self.game.sprite_map[data.owner_id]
+        self.alive = data.alive
 
 
 class Game(object):
@@ -219,7 +414,7 @@ class Game(object):
     # how many gems to start the game with
     GEM_NUMBER = 10
 
-    def __init__(self):
+    def __init__(self, server=False):
         self.running = False
         # make the window for the game
         # self.screen is a Surface
@@ -230,12 +425,20 @@ class Game(object):
         self.background = pygame.Surface(self.screen.get_size())
         self.background.fill((0, 0, 0))
 
-        self.player = Player()
+        self.server = server
 
-        # make Groups
-        self.gems = self.create_gems()
-        # in the future, add other human players to this group
-        self.characters = pygame.sprite.Group(self.player)
+        self.sprite_map: dict[str, AbstractSprite] = dict()
+
+        if self.server:
+            self.player = None
+            # make Groups
+            self.gems = self.create_gems()
+            # in the future, add other human players to this group
+            self.characters = pygame.sprite.Group()
+        else:
+            self.player = Player(self, str(uuid.uuid1()))
+            self.sprite_map[self.player.sprite_id] = self.player
+            self.characters = pygame.sprite.Group(self.player)
 
         # special type of Group that allows only rendering "dirty" areas of the screen
         # this is unnecessary for modern hardware, which should be able to
@@ -336,7 +539,9 @@ class Game(object):
         """Return a Group of Game.GEM_NUMBER gems."""
         gems = pygame.sprite.Group()
         for _ in range(Game.GEM_NUMBER):
-            gems.add(Gem())
+            gem = Gem(self, str(uuid.uuid1()))
+            self.sprite_map[gem.sprite_id] = gem
+            gems.add(gem)
         return gems
 
     def exit_game(self):
