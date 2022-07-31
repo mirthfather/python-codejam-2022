@@ -1,18 +1,33 @@
 #!/usr/bin/env python3
 import asyncio
+import json
 from datetime import datetime as dt
 
 # import pygame
 import websockets
-import json
 
 history = []
 
 
-async def game_server(sock):
+async def game_server(ws):
     """Main gameserver message handler"""
-    print(f'Connection: {sock}')
-    async for msg in sock:
+    client_addr = ws.remote_address[0]
+    hello = json.loads(await ws.recv())
+    if 'version' not in hello:
+        print(f'Connection {client_addr} did not send version information. Disconnecting')
+        return
+
+    if hello['version'] < 1.0:
+        print(f'Connection {client_addr} using version v{hello["version"]}. Disconnecting')
+        return
+
+    print(f'Connection established: {client_addr}')
+
+    await ws.send(json.dumps({
+        "version": 1.0
+    }))
+
+    async for msg in ws:
         tr = dt.now()
         history.append({
             "time_recv": tr,
@@ -22,7 +37,9 @@ async def game_server(sock):
             ret.append(history[0]["message"])
             history.pop(0)
 
-        await sock.send(json.dumps(ret))
+        await ws.send(json.dumps(ret))
+
+    print(f'Connection terminated: {client_addr}')
 
 
 async def main():

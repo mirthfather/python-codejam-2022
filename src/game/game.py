@@ -1,8 +1,11 @@
+import asyncio
+import json
 import random
 from typing import Tuple, Union
 
 import numpy as np
 import pygame
+import websockets
 
 # width and height of the screen in pixels
 # a fullscreen window of variable size would be possible
@@ -216,6 +219,7 @@ class Game(object):
     GEM_NUMBER = 10
 
     def __init__(self):
+        self.running = False
         # make the window for the game
         # self.screen is a Surface
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -239,12 +243,40 @@ class Game(object):
 
         self.clock = pygame.time.Clock()
 
-    def run(self):
-        """Call this method to start the game loop."""
+    async def startup(self):
+        """Connect to the server and start game loop"""
         # set self.running to False (through exit_game) to end the game
         self.running = True
+        server_host = 'de.jjolly.dev:7890'
+
+        async with websockets.connect(f'ws://{server_host}') as ws:
+            # Verify version match with server
+            await ws.send(json.dumps({
+                "version": 1.0
+            }))
+
+            hello = json.loads(await ws.recv())
+            if "error" in hello:
+                print(f'Server "{server_host}" failed connection with error: {hello["error"]}')
+                return
+
+            if "version" not in hello:
+                print(f'Server "{server_host}" did not send version identifier')
+                return
+
+            if hello["version"] > 1.0:
+                print(f'Server "{server_host}" report advanced version v{hello["version"]}. Please update the client')
+                return
+
+            game_loop = asyncio.create_task(self.run())
+
+            await game_loop
+
+    async def run(self):
+        """Call this method to start the game loop."""
         while self.running:
             self.loop()
+            await asyncio.sleep(0)
 
     def loop(self):
         """Run all aspects of one frame."""
@@ -318,7 +350,7 @@ def main():
     pygame.init()
 
     game = Game()
-    game.run()
+    asyncio.run(game.startup())
 
 
 if __name__ == "__main__":
