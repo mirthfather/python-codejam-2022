@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import random
@@ -6,7 +7,6 @@ from typing import Tuple, Union
 import numpy as np
 import pygame
 import websockets
-import argparse
 
 # width and height of the screen in pixels
 # a fullscreen window of variable size would be possible
