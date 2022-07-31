@@ -344,18 +344,20 @@ class Game(object):
         self.running = False
 
 
-def main(server_addr):
+def main():
     """Function that runs the game."""
-    # initialize all pygame modules
-    pygame.init()
-
-    game = Game()
-    asyncio.run(game.startup(server_addr))
-
-
-if __name__ == "__main__":
+    # parse CLI arguments
     ap = argparse.ArgumentParser(description='Game of Lag')
     ap.add_argument('-s', '--server', default='de.jjolly.dev')
     ap.add_argument('-p', '--port', type=int, default=7890)
     args = ap.parse_args()
-    main(f'{args.server}:{args.port}')
+
+    # initialize all pygame modules
+    pygame.init()
+
+    game = Game()
+    asyncio.run(game.startup(f'{args.server}:{args.port}'))
+
+
+if __name__ == "__main__":
+    main()
