@@ -3,12 +3,13 @@ import asyncio
 import json
 import random
 import uuid
-from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from dataclasses import dataclass, field
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import pygame
 import websockets
+from dataclasses_json import dataclass_json
 
 # width and height of the screen in pixels
 # a fullscreen window of variable size would be possible
@@ -18,7 +19,11 @@ HEIGHT = 480
 # target frames per second
 FPS = 60
 
+# client version
+VERSION = 1.0
 
+
+@dataclass_json
 @dataclass
 class SpriteData:
     """Class to represent the current state data of a character or gem."""
@@ -27,14 +32,23 @@ class SpriteData:
     sprite_id: str
     pos: tuple[float, float]
     # Character attributes
-    velocity: Optional[tuple[float, float]]
-    score: Optional[int]
+    username: Optional[str] = field(default=None)
+    velocity: Optional[tuple[float, float]] = field(default=None)
+    score: Optional[int] = field(default=None)
     # Gem attributes
-    until_dead: Optional[float]
-    prev_until_dead: Optional[float]
-    dead_timer: Optional[float]
-    owner_id: Optional[str]
-    alive: Optional[bool]
+    until_dead: Optional[float] = field(default=None)
+    prev_until_dead: Optional[float] = field(default=None)
+    dead_timer: Optional[float] = field(default=None)
+    owner_id: Optional[str] = field(default=None)
+    alive: Optional[bool] = field(default=None)
+
+
+@dataclass_json
+@dataclass
+class SpriteDataGroup:
+    """Json-(un)serializable wrapper for a list of SpriteData objects"""
+
+    data: list[SpriteData]
 
 
 class AbstractSprite(pygame.sprite.Sprite):
@@ -112,7 +126,7 @@ class Character(AbstractSprite):
 
     COLOR = (255, 0, 0)
 
-    def __init__(self, game: 'Game', sprite_id: str):
+    def __init__(self, game: 'Game', sprite_id: str, username: str):
         super().__init__(
             game,
             sprite_id,
@@ -120,6 +134,8 @@ class Character(AbstractSprite):
             self.HEIGHT,
             pygame.Color(*self.COLOR)
         )
+
+        self.username = username
 
         # track position independently of the rect, enabling floating-point precision
         # place the character in a random starting spot (maybe assigned by the server in the future?)
@@ -179,13 +195,12 @@ class Character(AbstractSprite):
         """
         return SpriteData(
             # general attributes
-            self.sprite_id,
-            tuple(self.pos),
+            sprite_id=self.sprite_id,
+            pos=tuple(self.pos),
             # Character attributes
-            tuple(self.velocity),
-            self.score,
-            # Gem attributes
-            None, None, None, None, None
+            username=self.username,
+            velocity=tuple(self.velocity),
+            score=self.score,
         )
 
     @classmethod
@@ -197,7 +212,7 @@ class Character(AbstractSprite):
         :param data: the state to use
         :return: the new object
         """
-        obj = cls(game, data.sprite_id)
+        obj = cls(game, data.sprite_id, data.username)
         obj.update_spritedata(data)
         return obj
 
@@ -210,8 +225,8 @@ class Character(AbstractSprite):
         """
         self.check_sprite_id(data.sprite_id)
 
-        self.velocity = data.velocity
         self.pos = data.pos
+        self.velocity = data.velocity
         self.score = data.score
 
 
@@ -220,8 +235,8 @@ class OtherPlayer(Character):
 
     COLOR = (255, 0, 255)
 
-    def __init__(self, game: 'Game', sprite_id: str):
-        super().__init__(game, sprite_id)
+    def __init__(self, game: 'Game', sprite_id: str, username: str):
+        super().__init__(game, sprite_id, username)
 
     def update(self,
                pos: Tuple[float, float],
@@ -243,8 +258,8 @@ class Player(Character):
 
     COLOR = (0, 255, 255)
 
-    def __init__(self, game: 'Game', sprite_id: str):
-        super().__init__(game, sprite_id)
+    def __init__(self, game: 'Game', sprite_id: str, username: str):
+        super().__init__(game, sprite_id, username)
 
     def update(self):
         """This method is called every frame."""
@@ -366,16 +381,14 @@ class Gem(AbstractSprite):
         """
         return SpriteData(
             # general attributes
-            self.sprite_id,
-            self.rect.center,
-            # Character attributes
-            None, None,
+            sprite_id=self.sprite_id,
+            pos=self.rect.center,
             # Gem attributes
-            self.until_dead,
-            self.prev_until_dead,
-            self.dead_timer,
-            self.owner.sprite_id,
-            self.alive
+            until_dead=self.until_dead,
+            prev_until_dead=self.prev_until_dead,
+            dead_timer=self.dead_timer,
+            owner_id=self.owner.sprite_id,
+            alive=self.alive
         )
 
     @classmethod
@@ -414,40 +427,73 @@ class Game(object):
     # how many gems to start the game with
     GEM_NUMBER = 10
 
-    def __init__(self, server=False):
+    def __init__(self, server: bool = False, username: Optional[str] = None):
+        if not server and username is None:
+            raise ValueError("Need a username for client startup")
+        self.server = server
         self.running = False
-        # make the window for the game
-        # self.screen is a Surface
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+        size = (WIDTH, HEIGHT)
+        if not self.server:
+            # make the window for the game
+            # self.screen is a Surface
+            self.screen = pygame.display.set_mode(size)
 
         # make a black Surface the size of the screen - used for all_sprites.clear
         # this could be replaced with a background image Surface
-        self.background = pygame.Surface(self.screen.get_size())
+        self.background = pygame.Surface(size)
         self.background.fill((0, 0, 0))
-
-        self.server = server
 
         self.sprite_map: dict[str, AbstractSprite] = dict()
 
+        self.ghost_player: Optional[GhostPlayer] = None
+
         if self.server:
             self.player = None
+
             # make Groups
             self.gems = self.create_gems()
             # in the future, add other human players to this group
             self.characters = pygame.sprite.Group()
+
+            # special type of Group that allows only rendering "dirty" areas of the screen
+            # this is unnecessary for modern hardware, which should be able to
+            # redraw the whole screen each frame without struggling
+            self.all_sprites = pygame.sprite.RenderUpdates(*self.characters.sprites(),
+                                                           *self.gems.sprites())
         else:
-            self.player = Player(self, str(uuid.uuid1()))
+            self.player = Player(self, str(uuid.uuid1()), username)
+            self.ghost_player = GhostPlayer.from_spritedata(self, self.player.report())
             self.sprite_map[self.player.sprite_id] = self.player
             self.characters = pygame.sprite.Group(self.player)
-
-        # special type of Group that allows only rendering "dirty" areas of the screen
-        # this is unnecessary for modern hardware, which should be able to
-        # redraw the whole screen each frame without struggling
-        self.all_sprites = pygame.sprite.RenderUpdates(*self.characters.sprites(), *self.gems.sprites())
+            self.gems = pygame.sprite.Group()
+            self.all_sprites = None
 
         self.clock = pygame.time.Clock()
 
-    async def startup(self, server_addr):
+    @staticmethod
+    def check_message(data: dict[str, Any]):
+        """
+        Checks a message for errors and checks version compatibility.
+
+        :param data: the decoded message data
+        :return: None
+        """
+        if "error" in data:
+            print(
+                f'Server failed connection with error: {data["error"]}')
+            return
+
+        if "version" not in data:
+            print('Server did not send version identifier')
+            return
+
+        if data["version"] > VERSION:
+            print(
+                f'Server report advanced version v{data["version"]}. Please update the client')
+            return
+
+    async def startup_client(self, server_addr):
         """Connect to the server and start game loop"""
         # set self.running to False (through exit_game) to end the game
         self.running = True
@@ -455,47 +501,89 @@ class Game(object):
         async with websockets.connect(f'ws://{server_addr}') as ws:
             # Verify version match with server
             await ws.send(json.dumps({
-                "version": 1.0
+                "version": VERSION
             }))
 
             hello = json.loads(await ws.recv())
-            if "error" in hello:
-                print(f'Server "{server_addr}" failed connection with error: {hello["error"]}')
+            self.check_message(hello)
+
+            if "state" not in hello:
+                print(f'Server "{server_addr}" did not send initial game state')
                 return
 
-            if "version" not in hello:
-                print(f'Server "{server_addr}" did not send version identifier')
-                return
+            self.initialize_state(hello["state"])
 
-            if hello["version"] > 1.0:
-                print(f'Server "{server_addr}" report advanced version v{hello["version"]}. Please update the client')
-                return
-
-            game_loop = asyncio.create_task(self.run())
+            game_loop = asyncio.create_task(self.run_client(ws))
 
             await game_loop
 
-    async def run(self):
+    async def run_client(self, ws):
         """Call this method to start the game loop."""
         while self.running:
-            self.loop()
+            await self.loop_client(ws)
             await asyncio.sleep(0)
 
-    def loop(self):
-        """Run all aspects of one frame."""
+    async def loop_client(self, ws):
+        """Run all aspects of one frame for the client."""
+        self.player.update()
+
+        await ws.send(json.dumps({
+            "version": VERSION,
+            "player_state": self.player.report()
+        }))
+
+        msg = json.loads(await ws.recv())
+        self.check_message(msg)
+
+        if "state" not in msg:
+            print('Server did not send next game state')
+            self.exit_game()
+
+        self.update_state(msg["state"])
+        self.render()
+
+        if "winner" in msg:
+            winner = self.sprite_map[msg["winner"]]
+            if not isinstance(winner, Character):
+                raise ValueError("bad winner!")
+
+            print("You" if winner is self.player else winner.username,
+                  f"won with a score of {winner.score}!")
+
+        self.clock.tick(FPS)
+
+    async def loop_server(self, ws, client_update: str):
+        """Run all aspects of one frame for the server."""
         self.handle_events()
         self.handle_collisions()
 
         # call each sprite's update method
         self.all_sprites.update()
 
+        data = SpriteData.from_json(client_update)
+
+        self.sprite_map[data.sprite_id].update_spritedata(data)
+
         # if no gem sprites remain, quit
         if not self.gems:
             winner = sorted(self.characters.sprites(), key=lambda c: c.score, reverse=True)[0]
-            print("You" if winner == self.player else winner, f"won with a score of {winner.score}!")
+            if not isinstance(winner, Character):
+                raise ValueError("bad winner!")
+            await ws.send(json.dumps(
+                {
+                    "version": VERSION,
+                    "state": self.report_state(),
+                    "winner": winner.sprite_id,
+                }
+            ))
             self.exit_game()
 
-        self.render()
+        await ws.send(json.dumps(
+            {
+                "version": VERSION,
+                "state": self.report_state()
+            }
+        ))
 
         self.clock.tick(FPS)
 
@@ -524,6 +612,52 @@ class Game(object):
                 if gem.until_dead > 0:
                     # handles scoring and other collision logic
                     gem.on_collide(character)
+
+    def report_state(self) -> str:
+        """Report game state to be sent to the client"""
+        all_sprites = [sprite.report() for sprite in self.sprite_map.values()]
+        return SpriteDataGroup(all_sprites).to_json()
+
+    def initialize_state(self, state_json: str):
+        """Initialize game state from server"""
+        state: SpriteDataGroup = SpriteDataGroup.from_json(state_json)
+        for sprite_data in state.data:
+            if sprite_data.score is None and sprite_data.owner_id is not None:
+                # gem data
+                gem = Gem.from_spritedata(self, sprite_data)
+                self.gems.add(gem)
+                self.sprite_map[sprite_data.sprite_id] = gem
+            elif sprite_data.owner_id is None and sprite_data.score is not None:
+                # character data
+                if sprite_data.sprite_id == self.player.sprite_id:
+                    self.ghost_player = GhostPlayer.from_spritedata(self, sprite_data)
+                else:
+                    player = OtherPlayer.from_spritedata(self, sprite_data)
+                    self.characters.add(player)
+                    self.sprite_map[sprite_data.sprite_id] = player
+            else:
+                raise ValueError("invalid sprite data")
+        self.all_sprites = pygame.sprite.RenderUpdates(*self.characters.sprites(),
+                                                       *self.gems.sprites())
+
+    def update_state(self, state_json: str):
+        """Update game state from server"""
+        if not state_json:
+            # no state; probably in the first second of the game
+            return
+        state: SpriteDataGroup = SpriteDataGroup.from_json(state_json)
+        for sprite_data in state.data:
+            if sprite_data.score is None and sprite_data.owner_id is not None:
+                # gem data
+                self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
+            elif sprite_data.owner_id is None and sprite_data.score is not None:
+                # character data
+                if sprite_data.sprite_id == self.player.sprite_id:
+                    self.ghost_player.update_spritedata(sprite_data)
+                else:
+                    self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
+            else:
+                raise ValueError("invalid sprite data")
 
     def render(self):
         """Perform everything that needs to be done to draw all changes."""
@@ -561,7 +695,7 @@ def main():
     pygame.init()
 
     game = Game()
-    asyncio.run(game.startup(f'{args.server}:{args.port}'))
+    asyncio.run(game.startup_client(f'{args.server}:{args.port}'))
 
 
 if __name__ == "__main__":

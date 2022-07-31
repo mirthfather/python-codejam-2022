@@ -13,6 +13,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
+    "dataclasses_json",
     "numpy",
     "pygame",
     "websockets",
