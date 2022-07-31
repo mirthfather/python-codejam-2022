@@ -687,7 +687,7 @@ def main():
     """Function that runs the game."""
     # parse CLI arguments
     ap = argparse.ArgumentParser(description='Game of Lag')
-    ap.add_argument('-s', '--server', default='de.jjolly.dev')
+    ap.add_argument('-s', '--server', default='localhost')
     ap.add_argument('-p', '--port', type=int, default=7890)
     args = ap.parse_args()
 
