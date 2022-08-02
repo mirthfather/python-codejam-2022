@@ -35,20 +35,15 @@ class Server(gol_abc.SpriteTracker):
         # in the future, add other human players to this group
         self.characters = pygame.sprite.Group()
 
-        # special type of Group that allows only rendering "dirty" areas of the screen
-        # this is unnecessary for modern hardware, which should be able to
-        # redraw the whole screen each frame without struggling
-        self.all_sprites = pygame.sprite.RenderUpdates(*self.characters.sprites(),
-                                                       *self.gems.sprites())
-
-        self.clock = pygame.time.Clock()
-
     async def loop(self, ws, client_update: str):
         """Run all aspects of one frame for the server."""
-        self.handle_collisions()
-
-        # call each sprite's update method
-        self.all_sprites.update()
+        # call update methods of each sprite in the group
+        self.characters.update()
+        for gem in self.gems:
+            # Passing collision data through update instead of using a
+            # groupcollide later with another method makes it easier for Gems to
+            # notice when a character is no longer colliding with them.
+            gem.update(pygame.sprite.spritecollide(gem, self.characters, False), gol_abc.timestamp())
 
         #print(f"{client_update=}")
         data = sprites.SpriteData.from_dict(json.loads(client_update)["player_state"])
@@ -75,8 +70,6 @@ class Server(gol_abc.SpriteTracker):
                 "state": self.report_state()
             }
         ))
-
-        self.clock.tick(gol_abc.FPS)
 
     def report_state(self) -> str:
         """Report game state to be sent to the client"""
@@ -105,19 +98,6 @@ class Server(gol_abc.SpriteTracker):
             )
         ))
         self.sprite_map[data.sprite_id].update_spritedata(data)
-
-    def handle_collisions(self):
-        """Detect sprite collisions and act appropriately."""
-        for character, gems in pygame.sprite.groupcollide(self.characters,
-                                                          self.gems,
-                                                          False,
-                                                          False).items():
-            for gem in gems:
-                # if the gem hasn't already been picked up
-                if gem.until_dead > 0:
-                    # handles scoring and other collision logic
-                    gem.on_collide(character)
-
 
 async def game_server(ws):
     """Main gameserver message handler"""
@@ -158,7 +138,9 @@ async def game_server(ws):
         #     ret.append(history[0]["message"])
         #     history.pop(0)
         history.append(msg)
-        if len(history) >= gol_abc.FPS:
+        # throw a number here until I find out what this is doing
+        #if len(history) >= gol_abc.FPS:
+        if len(history) >= 60:
             ret = history.pop(0)
             await server.loop(ws, ret)
         else:

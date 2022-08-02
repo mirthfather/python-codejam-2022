@@ -1,11 +1,19 @@
 """Abstract classes for shared code everywhere."""
 
 import pygame
-
-# target frames per second
-FPS = 60
+import time
 
 VERSION = 1.0
+
+
+def timestamp() -> float:
+    """
+    Return a float number of seconds representing the current time.
+
+    The time elapsed between two points can be obtained by determining the
+    difference between what this function returned at two different times.
+    """
+    return time.clock_gettime(time.CLOCK_REALTIME)
 
 
 class SpriteMap(pygame.sprite.Group):

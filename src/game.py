@@ -15,6 +15,9 @@ import sprites
 WIDTH = 640
 HEIGHT = 480
 
+# uncomment to implement FPS capping
+# MAX_FPS = 60
+
 class Game(gol_abc.SpriteTracker):
     """Object to handle all game-level tasks."""
 
@@ -123,7 +126,8 @@ class Game(gol_abc.SpriteTracker):
             print("You" if winner is self.player else winner.username,
                   f"won with a score of {winner.score}!")
 
-        self.clock.tick(gol_abc.FPS)
+        # uncomment to implement FPS capping
+        # self.clock.tick(MAX_FPS)
 
     def handle_events(self):
         """Run pygame.event.pump() and close upon window close."""
@@ -149,7 +153,7 @@ class Game(gol_abc.SpriteTracker):
                     self.player.update_spritedata(sprite_data)
                     self.ghost_player = sprites.GhostPlayer.from_spritedata(sprite_data)
                 else:
-                    player = OtherPlayer.from_spritedata(sprite_data)
+                    player = Character.from_spritedata(sprite_data)
                     self.characters.add(player)
                     self.sprite_map.add(player)
             else:
