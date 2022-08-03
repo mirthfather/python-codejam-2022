@@ -26,7 +26,7 @@ class Server(gol_abc.SpriteTracker):
     """Server that handles communication and management in the game."""
 
     # how many gems to start the game with
-    GEM_NUMBER = 1
+    GEM_NUMBER = 10
 
     def __init__(self):
         super().__init__()
