@@ -2,6 +2,7 @@
 
 import pygame
 import time
+from typing import List
 
 VERSION = 1.0
 
@@ -25,7 +26,7 @@ class SpriteMap(pygame.sprite.Group):
                 return sprite
         raise KeyError(f"no sprite with id {uuid}")
 
-    def ids(self) -> None:
+    def ids(self) -> List[str]:
         """Return the UUIDs of each sprite."""
         return [sprite.sprite_id for sprite in self.spritedict]
 
