@@ -169,7 +169,7 @@ async def game_server(ws):
 
 async def main():
     """Main websocket event loop"""
-    async with websockets.serve(game_server, "0.0.0.0", 7890):
+    async with websockets.serve(game_server, "0.0.0.0", gol_abc.PORT):
         await asyncio.Future()
 
 

@@ -213,7 +213,7 @@ def main():
     ap = argparse.ArgumentParser(description="Game of Lag")
     ap.add_argument("username", type=str)
     ap.add_argument("-s", "--server", default="localhost")
-    ap.add_argument("-p", "--port", type=int, default=7890)
+    ap.add_argument("-p", "--port", type=int, default=gol_abc.PORT)
     args = ap.parse_args()
 
     # initialize all pygame modules

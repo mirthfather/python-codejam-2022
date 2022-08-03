@@ -8,6 +8,8 @@ import pygame
 
 VERSION = 1.0
 
+PORT = 7890
+
 
 def timestamp() -> float:
     """
