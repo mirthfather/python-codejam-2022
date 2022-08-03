@@ -28,30 +28,34 @@ class Server(gol_abc.SpriteTracker):
     # how many gems to start the game with
     GEM_NUMBER = 10
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.gems = self.create_gems()
-        # in the future, add other human players to this group
         self.characters = pygame.sprite.Group()
 
-    async def loop(self, ws, client_update: str):
+    async def loop(self, ws, client_update: str) -> None:
         """Run all aspects of one frame for the server."""
         data = sprites.SpriteData.from_dict(json.loads(client_update)["player_state"])
+        # TODO: Is there a better way to handle sprites who are erroneously
+        # continuing to send data? Maybe they can be returned some sort of
+        # message that tells them of their mistake?
         if data.sprite_id not in self.sprite_map.ids():
             return
 
-        # call the update method of each sprite in the group
+        # call each character's update method
         self.characters.update()
+        # call each gem's update method
         for gem in self.gems:
             # Passing collision data through update instead of using a
             # groupcollide later with another method makes it easier for Gems to
             # notice when a character is no longer colliding with them.
             gem.update(pygame.sprite.spritecollide(gem, self.characters, False), gol_abc.timestamp())
 
+        # update the sprite in question (should be a character) with incoming
+        # data from the client
         self.sprite_map[data.sprite_id].update_spritedata(data)
 
-        # if no gem sprites remain, quit
         if not self.gems:
             winner = sorted(self.characters.sprites(), key=lambda c: c.score, reverse=True)[0]
             if not isinstance(winner, sprites.Character):
@@ -77,7 +81,7 @@ class Server(gol_abc.SpriteTracker):
         all_sprites = [sprite.report() for sprite in self.sprite_map.sprites()]
         return sprites.SpriteDataGroup(all_sprites).to_json()
 
-    def create_gems(self):
+    def create_gems(self) -> pygame.sprite.Group:
         """Return a Group of Game.GEM_NUMBER gems."""
         gems = pygame.sprite.Group()
         for _ in range(Server.GEM_NUMBER):
@@ -116,19 +120,19 @@ async def game_server(ws):
 
     client_addr = ws.remote_address[0]
     hello = json.loads(await ws.recv())
-    if 'version' not in hello:
-        print(f'Connection {client_addr} did not send version information. Disconnecting')
+    if "version" not in hello:
+        print(f"Connection {client_addr} did not send version information. Disconnecting")
         return
 
-    if hello['version'] < gol_abc.VERSION:
-        print(f'Connection {client_addr} using version v{hello["version"]}. Disconnecting')
+    if hello["version"] < gol_abc.VERSION:
+        print(f"Connection {client_addr} using version v{hello['version']}. Disconnecting")
         return
 
     if "username" not in hello:
         print(f"Connection {client_addr} did not send username. Disconnecting")
         return
 
-    print(f'Connection established: {client_addr}')
+    print(f"Connection established: {client_addr}")
 
     # make a player according to the player state sent from the client
     player_state = server.add_player(hello["username"])
@@ -149,7 +153,7 @@ async def game_server(ws):
         #     ret.append(history[0]["message"])
         #     history.pop(0)
         history.append(msg)
-        # throw a number here until I find out what this is doing
+        # TODO: See if there is a way to minimize or altogether remove this delay
         if len(history) >= 60:
             ret = history.pop(0)
             await server.loop(ws, ret)
@@ -160,7 +164,7 @@ async def game_server(ws):
                 "state": ""
             }))
 
-    print(f'Connection terminated: {client_addr}')
+    print(f"Connection terminated: {client_addr}")
 
 
 async def main():

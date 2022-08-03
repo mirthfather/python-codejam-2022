@@ -24,7 +24,7 @@ class Game(gol_abc.SpriteTracker):
     def __init__(self) -> None:
         super().__init__()
 
-        self.running = False
+        self.running = True
 
         # make the window for the game
         # self.screen is a Surface
@@ -55,24 +55,21 @@ class Game(gol_abc.SpriteTracker):
         """
         if "error" in data:
             print(
-                f'Server failed connection with error: {data["error"]}')
+                f"Server failed connection with error: {data['error']}")
             return
 
         if "version" not in data:
-            print('Server did not send version identifier')
+            print("Server did not send version identifier")
             return
 
         if data["version"] > gol_abc.VERSION:
             print(
-                f'Server report advanced version v{data["version"]}. Please update the client')
+                f"Server report advanced version v{data['version']}. Please update the client")
             return
 
     async def startup(self, username, server_addr):
         """Connect to the server and start game loop"""
-        # set self.running to False (through exit_game) to end the game
-        self.running = True
-
-        async with websockets.connect(f'ws://{server_addr}') as ws:
+        async with websockets.connect(f"ws://{server_addr}") as ws:
             # Verify version match with server
             await ws.send(json.dumps({
                 "version": gol_abc.VERSION,
@@ -83,15 +80,15 @@ class Game(gol_abc.SpriteTracker):
             self.check_message(hello)
 
             if "state" not in hello:
-                print(f'Server "{server_addr}" did not send initial game state')
+                print(f"Server '{server_addr}' did not send initial game state")
                 return
 
             if "player_state" not in hello:
-                print(f'Server "{server_addr}" did not send initial player state')
+                print(f"Server '{server_addr}' did not send initial player state")
                 return
 
             self.player = sprites.Player.from_spritedata(sprites.SpriteData.from_dict(hello["player_state"]))
-            # ensure the ghost player doesn't have the player's ID
+            # ensure the ghost player doesn"t have the player's ID
             hello["player_state"]["sprite_id"] = gol_abc.generate_uuid()
             self.ghost_player = sprites.GhostPlayer.from_spritedata(sprites.SpriteData.from_dict(hello["player_state"]))
             self.player.add(self.characters, self.sprite_map)
@@ -107,13 +104,12 @@ class Game(gol_abc.SpriteTracker):
         """Call this method to start the game loop."""
         while self.running:
             await self.loop(ws)
-            await asyncio.sleep(0)  # why?
 
     async def loop(self, ws):
         """Run all aspects of one frame for the client."""
         self.handle_events()
 
-        # update all sprites
+        # call every sprite's update method
         self.all_sprites.update()
 
         await ws.send(json.dumps({
@@ -125,7 +121,7 @@ class Game(gol_abc.SpriteTracker):
         self.check_message(msg)
 
         if "state" not in msg:
-            print('Server did not send next game state')
+            print("Server did not send next game state")
             self.exit_game()
 
         self.update_state(msg["state"])
@@ -133,6 +129,7 @@ class Game(gol_abc.SpriteTracker):
 
         if "winner" in msg:
             winner = self.sprite_map[msg["winner"]]
+
             if not isinstance(winner, sprites.Character):
                 raise ValueError("bad winner!")
 
@@ -156,37 +153,42 @@ class Game(gol_abc.SpriteTracker):
         """Initialize game state from server"""
         state: sprites.SpriteDataGroup = sprites.SpriteDataGroup.from_json(state_json)
         for sprite_data in state.data:
+            # gem data
             if sprite_data.score is None:
-                # gem data
                 gem = sprites.ClientGem.from_spritedata(self, sprite_data)
                 gem.add(self.gems, self.sprite_map)
+            # character data
             elif sprite_data.owner_id is None and sprite_data.score is not None:
-                # character data
                 if sprite_data.sprite_id not in self.sprite_map.ids():
                     player = sprites.Character.from_spritedata(sprite_data)
                     player.add(self.characters, self.sprite_map)
             else:
                 raise ValueError("invalid sprite data")
 
-        self.all_sprites = pygame.sprite.RenderUpdates(*self.characters.sprites(),
-                                                       *self.gems.sprites())
+        self.all_sprites = pygame.sprite.RenderUpdates(
+            *self.characters.sprites(),
+            *self.gems.sprites()
+        )
 
     def update_state(self, state_json: str):
         """Update game state from server"""
         if not state_json:
             # no state; probably in the first second of the game
             return
-        state: sprites.SpriteDataGroup = sprites.SpriteDataGroup.from_json(state_json)
+
+        state = sprites.SpriteDataGroup.from_json(state_json)
         for sprite_data in state.data:
+            # gem data
             if sprite_data.score is None:
-                # gem data
                 self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
+
+            # character data
             elif sprite_data.owner_id is None and sprite_data.score is not None:
-                # character data
                 if sprite_data.sprite_id == self.player.sprite_id:
                     self.ghost_player.update_spritedata(sprite_data)
                 else:
                     self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
+
             else:
                 raise ValueError("invalid sprite data")
 
@@ -208,17 +210,17 @@ class Game(gol_abc.SpriteTracker):
 def main():
     """Function that runs the game."""
     # parse CLI arguments
-    ap = argparse.ArgumentParser(description='Game of Lag')
+    ap = argparse.ArgumentParser(description="Game of Lag")
     ap.add_argument("username", type=str)
-    ap.add_argument('-s', '--server', default='localhost')
-    ap.add_argument('-p', '--port', type=int, default=7890)
+    ap.add_argument("-s", "--server", default="localhost")
+    ap.add_argument("-p", "--port", type=int, default=7890)
     args = ap.parse_args()
 
     # initialize all pygame modules
     pygame.init()
 
     game = Game()
-    asyncio.run(game.startup(args.username, f'{args.server}:{args.port}'))
+    asyncio.run(game.startup(args.username, f"{args.server}:{args.port}"))
 
 
 if __name__ == "__main__":

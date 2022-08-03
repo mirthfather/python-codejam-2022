@@ -54,7 +54,7 @@ class AbstractSprite(pygame.sprite.Sprite):
         width: int,
         height: int,
         color: pygame.Color
-    ):
+    ) -> None:
         super().__init__()
         self.sprite_id: str = sprite_id
 
@@ -75,7 +75,7 @@ class AbstractSprite(pygame.sprite.Sprite):
         pass
 
     @classmethod
-    def from_spritedata(cls, game: 'Game', data: SpriteData) -> 'AbstractSprite':
+    def from_spritedata(cls, game: "Game", data: SpriteData) -> "AbstractSprite":
         """
         Instantiate an object of this class for a given game using SpriteData.
 
@@ -104,7 +104,7 @@ class AbstractSprite(pygame.sprite.Sprite):
         :return: None
         """
         if sprite_id != self.sprite_id:
-            raise ValueError('mismatched sprite ID')
+            raise ValueError("mismatched sprite ID")
 
 
 class Character(AbstractSprite):
@@ -118,7 +118,7 @@ class Character(AbstractSprite):
 
     COLOR = (255, 0, 255)
 
-    def __init__(self, sprite_id: str, username: str, pos: Tuple[float, float]):
+    def __init__(self, sprite_id: str, username: str, pos: Tuple[float, float]) -> None:
         super().__init__(
             sprite_id,
             self.WIDTH,
@@ -135,22 +135,23 @@ class Character(AbstractSprite):
         self.velocity = np.zeros(2)
         # pixels per second per second
         self.thrust = np.zeros(2)
+
         # timestamp of the last time move was called
         self.last_move = gol_abc.timestamp()
 
         self.score = 0
 
-    def update(self):
+    def update(self) -> None:
         """Called every frame."""
         self.move(self.thrust)
 
-    def move(self, thrust: np.ndarray):
+    def move(self, thrust: np.ndarray) -> None:
         """Correct the magnitude of the thrust and move the character accordingly."""
         diff = gol_abc.timestamp() - self.last_move
 
         # normalize the direction so that moving diagonally does not move faster
         # this is done by dividing the thrust by its magnitude
-        # the 'or 1' causes division by 1 if the magnitude is 0 to avoid zero division errors
+        # the "or 1" causes division by 1 if the magnitude is 0 to avoid zero division errors
         #
         # Note: if it is possible to standardize thrusts on a scale of 0 to 1,
         #       this could be optimized by dividing by sqrt(2) or not at all
@@ -181,9 +182,10 @@ class Character(AbstractSprite):
         # changing the rect's center automatically changes the sprite's position
         self.rect.center = self.pos
 
+        # update the last_move time
         self.last_move += diff
 
-    def increment_score(self):
+    def increment_score(self) -> None:
         """Increase this Character's score by 1."""
         self.score += 1
         print(self, "scored!")
@@ -208,7 +210,7 @@ class Character(AbstractSprite):
         )
 
     @classmethod
-    def from_spritedata(cls, data: SpriteData) -> 'Character':
+    def from_spritedata(cls, data: SpriteData) -> "Character":
         """
         Instantiate an object of this class for a given game using SpriteData.
 
@@ -229,11 +231,10 @@ class Character(AbstractSprite):
         """
         self.check_sprite_id(data.sprite_id)
 
-        self.score = data.score
-        # ignore pos for now---we are trying to make move client-only
-        # self.pos = data.pos
         self.velocity = np.array(data.velocity)
         self.thrust = np.array(data.thrust)
+
+        self.score = data.score
 
 
 class GhostPlayer(Character):
@@ -242,7 +243,7 @@ class GhostPlayer(Character):
     COLOR = (0, 255, 255, 127)
 
     def check_sprite_id(self, sprite_id: str) -> None:
-        """Do nothing, as GhostPlayers shouldn't worry about receiving the player's ID."""
+        """Do nothing, as GhostPlayers shouldn"t worry about receiving the player's ID."""
         pass
 
 
@@ -251,7 +252,7 @@ class Player(Character):
 
     COLOR = (0, 255, 255)
 
-    def update(self):
+    def update(self) -> None:
         """This method is called every frame."""
         # acceleration vector
         # This only provides direction; magnitude is calculated in Character.move
@@ -292,16 +293,13 @@ class Gem(AbstractSprite):
     # how long it takes a Character to pick up a Gem in seconds
     PICKUP_TIME = 0.5
 
-    def __init__(self,
-                 game: 'Game',
-                 sprite_id: str,
-                 ):
+    def __init__(self, game: "Game", sprite_id: str) -> None:
         super().__init__(sprite_id, Gem.WIDTH, Gem.HEIGHT, pygame.Color(Gem.COLOR))
 
         # Game or Server class
         self.game = game
 
-        # set to True only on the frame the gem dies
+        # set to True after the gem dies
         self.die_trigger = False
 
         # place the Gem in a random spot on the screen
@@ -311,8 +309,10 @@ class Gem(AbstractSprite):
         # time when the owner started colliding with the gem
         # based on SERVER time
         self.collision_time: Union[float, None] = None
+        # most recent timestamp from the server
         self.server_timestamp: Union[float, None] = None
 
+        # Character that will score if they stay on this Gem for long enough
         self.owner: Union[Character, None] = None
 
     def report(self) -> SpriteData:
@@ -343,6 +343,7 @@ class HeadlessGem(Gem):
         if self.die_trigger:
             self.kill()
 
+        # saved so that it can be passed to the clients
         self.server_timestamp = server_timestamp
 
         # if collisions is not None and collisions is not empty
@@ -376,6 +377,7 @@ class ClientGem(Gem):
 
     def __init__(self, game: "Game", sprite_id: str) -> None:
         super().__init__(game, sprite_id)
+
         # time when the owner picked up the gem
         # based on CLIENT time
         self.dead_time: Union[float, None] = None
@@ -401,17 +403,17 @@ class ClientGem(Gem):
             # change transparency based on the time until the gem will be picked up
             self.image.set_alpha(((self.server_timestamp - self.collision_time)/Gem.PICKUP_TIME) * 255)
 
+        # if this gem has not been picked up and we are not colliding a character
         else:
             self.image.set_alpha(255)
 
     def die(self) -> None:
-        """Prepare for the "flashing after death" state."""
-        # change the gem's color
+        """Prepare for the 'flashing after death' state."""
         self.image.fill(pygame.Color(Gem.DEAD_COLOR))
         self.dead_time = gol_abc.timestamp()
 
     @classmethod
-    def from_spritedata(cls, game: 'Game', data: SpriteData) -> 'Gem':
+    def from_spritedata(cls, game: "Game", data: SpriteData) -> "Gem":
         """
         Instantiate an object of this class for a given game using SpriteData.
 
