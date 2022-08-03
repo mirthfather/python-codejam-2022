@@ -32,6 +32,8 @@ class SpriteData:
 
     # Gem attributes
     collision_time:   Optional[float] = field(default=None)
+    server_timestamp: Optional[float] = field(default=None)
+    die_trigger:      Optional[bool]  = field(default=None)
     owner_id:         Optional[str]   = field(default=None)
 
 
@@ -139,6 +141,7 @@ class Character(AbstractSprite):
         self.score = 0
 
     def update(self):
+        """Called every frame."""
         self.move(self.thrust)
 
     def move(self, thrust: np.ndarray):
@@ -200,6 +203,7 @@ class Character(AbstractSprite):
             # Character attributes
             username=self.username,
             velocity=tuple(map(float, self.velocity)),
+            thrust=tuple(map(float, self.thrust)),
             score=self.score,
         )
 
@@ -237,18 +241,15 @@ class GhostPlayer(Character):
 
     COLOR = (0, 255, 255, 127)
 
+    def check_sprite_id(self, sprite_id: str) -> None:
+        """Do nothing, as GhostPlayers shouldn't worry about receiving the player's ID."""
+        pass
+
 
 class Player(Character):
     """A Character that can be controlled locally by the keyboard."""
 
     COLOR = (0, 255, 255)
-
-    def __init__(self, sprite_id: str, username: str):
-        # start off-screen for now
-        # A cleaner method would be to not make a player until we know its pos.
-        # Adding that would align well with having the server assign uuids
-        # instead of having clients report them.
-        super().__init__(sprite_id, username, (-50, -50))
 
     def update(self):
         """This method is called every frame."""
@@ -280,18 +281,13 @@ class Player(Character):
 
 
 class Gem(AbstractSprite):
-    """A gem for a character to pick up."""
-
-    WIDTH = 10
-    HEIGHT = 10
+    """Base class for code shared between server- and client-side gems."""
 
     COLOR = (0, 255, 0)
     DEAD_COLOR = (255, 0, 0)
 
-    # how long the Sprite should flash after being picked up in seconds
-    DEAD_TIME = 0.5
-    # how long each flash when dead is in seconds
-    DEAD_FLASH_TIME = 0.15
+    WIDTH = 10
+    HEIGHT = 10
 
     # how long it takes a Character to pick up a Gem in seconds
     PICKUP_TIME = 0.5
@@ -302,7 +298,11 @@ class Gem(AbstractSprite):
                  ):
         super().__init__(sprite_id, Gem.WIDTH, Gem.HEIGHT, pygame.Color(Gem.COLOR))
 
+        # Game or Server class
         self.game = game
+
+        # set to True only on the frame the gem dies
+        self.die_trigger = False
 
         # place the Gem in a random spot on the screen
         self.rect.center = (random.randint(Gem.WIDTH//2, WIDTH-(Gem.WIDTH//2)),
@@ -311,60 +311,9 @@ class Gem(AbstractSprite):
         # time when the owner started colliding with the gem
         # based on SERVER time
         self.collision_time: Union[float, None] = None
-        # used to track if the owner has left
-        self.collided_last_frame = False
-        # time when the owner picked up the gem
-        # based on CLIENT time
-        self.dead_time: Union[float, None] = None
+        self.server_timestamp: Union[float, None] = None
 
         self.owner: Union[Character, None] = None
-
-    def update(
-            self,
-            collisions:       Optional[List[Character]] = None,
-            server_timestamp: Optional[float]           = None
-        ) -> None:
-        """Called every frame."""
-        # if collisions is not None or if collisions is not empty
-        # and this gem has not yet been picked up
-        if collisions and (self.dead_time is None):
-            # if this gem is not currently being picked up
-            if self.collision_time is None:
-                # assign a new owner
-                # in the rare event that two characters collide with a gem at the same time, we will prefer whichever one happens to be the first in the list
-                self.owner = collisions[0]
-                self.collision_time = server_timestamp
-            # if this gem is already being picked up
-            else:
-                if server_timestamp - self.collision_time >= Gem.PICKUP_TIME:
-                    self.die()
-                    self.owner.increment_score()
-        else:
-            # reset the counter if the owner has left
-            self.owner = None
-            self.collision_time = None
-
-        # if this gem has already been picked up
-        if self.dead_time is not None:
-            diff = gol_abc.timestamp() - self.dead_time
-            if diff >= Gem.DEAD_TIME:
-                # built-in Sprite method that removes this Sprite from all groups
-                self.kill()
-
-            # toggle transparency/opaqueness to create a flashing effect
-            self.image.set_alpha(255 * (1 - ((diff // Gem.DEAD_FLASH_TIME) % 2)))
-
-        # if this gem has not yet been picked up and we have a server timestamp
-        # AND we are colliding a character
-        elif server_timestamp is not None and self.collision_time is not None:
-            # change transparency based on the time until the gem will be picked up
-            self.image.set_alpha(((server_timestamp - self.collision_time)/Gem.PICKUP_TIME) * 255)
-
-    def die(self) -> None:
-        """Prepare for the "flashing after death" state."""
-        # change the gem's color
-        self.image.fill(pygame.Color(Gem.DEAD_COLOR))
-        self.dead_time = gol_abc.timestamp()
 
     def report(self) -> SpriteData:
         """
@@ -378,8 +327,88 @@ class Gem(AbstractSprite):
             pos=self.rect.center,
             # Gem attributes
             collision_time=self.collision_time,
+            server_timestamp=self.server_timestamp,
             owner_id=None if self.owner is None else self.owner.sprite_id,
+            die_trigger=self.die_trigger
         )
+
+
+class HeadlessGem(Gem):
+    """A gem controlled by the server."""
+
+    def update(self, collisions: List[Character], server_timestamp: float) -> None:
+        """Called every frame."""
+        # remove the gem the frame after it dies
+        # this gives time for the death to be sent to the clients
+        if self.die_trigger:
+            self.kill()
+
+        self.server_timestamp = server_timestamp
+
+        # if collisions is not None and collisions is not empty
+        # and this gem has not yet been picked up
+        if collisions and not self.die_trigger:
+            # if this gem is not currently being picked up
+            if self.collision_time is None:
+                # assign a new owner
+                # In the rare event that two characters collide with a gem at
+                # the same time, we will prefer whichever one happens to be the
+                # first in the list.
+                self.owner = collisions[0]
+                self.collision_time = server_timestamp
+            # if this gem has been in contact for long enough to be picked up
+            elif server_timestamp - self.collision_time >= Gem.PICKUP_TIME:
+                self.owner.increment_score()
+                self.die_trigger = True
+        else:
+            # reset the counter if the owner has left
+            self.owner = None
+            self.collision_time = None
+
+
+class ClientGem(Gem):
+    """A gem for a character to pick up."""
+
+    # how long the Sprite should flash after being picked up in seconds
+    DEAD_TIME = 0.5
+    # how long each flash when dead is in seconds
+    DEAD_FLASH_TIME = 0.15
+
+    def __init__(self, game: "Game", sprite_id: str) -> None:
+        super().__init__(game, sprite_id)
+        # time when the owner picked up the gem
+        # based on CLIENT time
+        self.dead_time: Union[float, None] = None
+
+    def update(self) -> None:
+        """Called every frame."""
+        # die_trigger will be set to True from the server
+        if self.die_trigger and self.dead_time is None:
+            self.die()
+
+        # if this gem has already been picked up
+        if self.dead_time is not None:
+            diff = gol_abc.timestamp() - self.dead_time
+            if diff >= ClientGem.DEAD_TIME:
+                # built-in Sprite method that removes this Sprite from all groups
+                self.kill()
+
+            # toggle transparency/opaqueness to create a flashing effect
+            self.image.set_alpha(255 * (1 - ((diff // ClientGem.DEAD_FLASH_TIME) % 2)))
+
+        # if this gem has not yet been picked up and we are colliding a character
+        elif self.collision_time is not None:
+            # change transparency based on the time until the gem will be picked up
+            self.image.set_alpha(((self.server_timestamp - self.collision_time)/Gem.PICKUP_TIME) * 255)
+
+        else:
+            self.image.set_alpha(255)
+
+    def die(self) -> None:
+        """Prepare for the "flashing after death" state."""
+        # change the gem's color
+        self.image.fill(pygame.Color(Gem.DEAD_COLOR))
+        self.dead_time = gol_abc.timestamp()
 
     @classmethod
     def from_spritedata(cls, game: 'Game', data: SpriteData) -> 'Gem':
@@ -405,4 +434,6 @@ class Gem(AbstractSprite):
 
         self.rect.center = data.pos
         self.collision_time = data.collision_time
+        self.server_timestamp = data.server_timestamp
+        self.die_trigger = data.die_trigger
         self.owner = None if data.owner_id is None else self.game.sprite_map[data.owner_id]

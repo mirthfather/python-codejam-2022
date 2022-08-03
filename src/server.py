@@ -2,7 +2,6 @@
 import asyncio
 import json
 import random
-import uuid
 
 import pygame
 import websockets
@@ -24,9 +23,10 @@ HEIGHT = 480
 
 
 class Server(gol_abc.SpriteTracker):
+    """Server that handles communication and management in the game."""
 
     # how many gems to start the game with
-    GEM_NUMBER = 10
+    GEM_NUMBER = 1
 
     def __init__(self):
         super().__init__()
@@ -37,7 +37,11 @@ class Server(gol_abc.SpriteTracker):
 
     async def loop(self, ws, client_update: str):
         """Run all aspects of one frame for the server."""
-        # call update methods of each sprite in the group
+        data = sprites.SpriteData.from_dict(json.loads(client_update)["player_state"])
+        if data.sprite_id not in self.sprite_map.ids():
+            return
+
+        # call the update method of each sprite in the group
         self.characters.update()
         for gem in self.gems:
             # Passing collision data through update instead of using a
@@ -45,15 +49,12 @@ class Server(gol_abc.SpriteTracker):
             # notice when a character is no longer colliding with them.
             gem.update(pygame.sprite.spritecollide(gem, self.characters, False), gol_abc.timestamp())
 
-        #print(f"{client_update=}")
-        data = sprites.SpriteData.from_dict(json.loads(client_update)["player_state"])
-
         self.sprite_map[data.sprite_id].update_spritedata(data)
 
         # if no gem sprites remain, quit
         if not self.gems:
             winner = sorted(self.characters.sprites(), key=lambda c: c.score, reverse=True)[0]
-            if not isinstance(winner, Character):
+            if not isinstance(winner, sprites.Character):
                 raise ValueError("bad winner!")
             await ws.send(json.dumps(
                 {
@@ -80,24 +81,34 @@ class Server(gol_abc.SpriteTracker):
         """Return a Group of Game.GEM_NUMBER gems."""
         gems = pygame.sprite.Group()
         for _ in range(Server.GEM_NUMBER):
-            gem = sprites.Gem(self, str(uuid.uuid1()))
-            gems.add(gem)
-            self.sprite_map.add(gem)
+            gem = sprites.HeadlessGem(self, gol_abc.generate_uuid())
+            gem.add(gems, self.sprite_map)
         return gems
 
-    def add_player(self, data: sprites.SpriteData) -> None:
-        """Add a player based on sprite data."""
-        if data.sprite_id in self.sprite_map.ids():
-            raise ValueError("a player with that ID is already in the game")
-        self.sprite_map.add(sprites.Character(
-            data.sprite_id,
-            data.username,
+    def add_player(self, username) -> sprites.SpriteData:
+        """
+        Add a player.
+
+        :return: the SpriteData of the character.
+        """
+        player = sprites.Character(
+            gol_abc.generate_uuid(),
+            username,
             (
                 random.uniform(sprites.Character.WIDTH/2, WIDTH-(sprites.Character.WIDTH/2)),
                 random.uniform(sprites.Character.HEIGHT/2, HEIGHT-(sprites.Character.HEIGHT/2))
             )
-        ))
-        self.sprite_map[data.sprite_id].update_spritedata(data)
+        )
+        self.sprite_map.add(player)
+        self.characters.add(player)
+
+        return player.report()
+
+    def exit_game(self) -> None:
+        """Remove characters and sprites from the server."""
+        self.characters.empty()
+        self.sprite_map.empty()
+
 
 async def game_server(ws):
     """Main gameserver message handler"""
@@ -113,19 +124,19 @@ async def game_server(ws):
         print(f'Connection {client_addr} using version v{hello["version"]}. Disconnecting')
         return
 
-    if "player_state" not in hello:
-        print(f"Connection {client_addr} did not send player state. Disconnecting")
+    if "username" not in hello:
+        print(f"Connection {client_addr} did not send username. Disconnecting")
         return
 
     print(f'Connection established: {client_addr}')
 
-    data = sprites.SpriteData.from_dict(hello["player_state"])
     # make a player according to the player state sent from the client
-    server.add_player(data)
+    player_state = server.add_player(hello["username"])
 
     await ws.send(json.dumps({
         "version": gol_abc.VERSION,
-        "state": server.report_state()
+        "state": server.report_state(),
+        "player_state": player_state.to_dict()
     }))
 
     async for msg in ws:
@@ -139,7 +150,6 @@ async def game_server(ws):
         #     history.pop(0)
         history.append(msg)
         # throw a number here until I find out what this is doing
-        #if len(history) >= gol_abc.FPS:
         if len(history) >= 60:
             ret = history.pop(0)
             await server.loop(ws, ret)

@@ -1,8 +1,7 @@
 import argparse
 import asyncio
 import json
-import uuid
-from typing import Any, Optional
+from typing import Any
 
 import pygame
 import websockets
@@ -18,10 +17,11 @@ HEIGHT = 480
 # uncomment to implement FPS capping
 # MAX_FPS = 60
 
+
 class Game(gol_abc.SpriteTracker):
     """Object to handle all game-level tasks."""
 
-    def __init__(self, username: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
         self.running = False
@@ -35,11 +35,12 @@ class Game(gol_abc.SpriteTracker):
         self.background = pygame.Surface((WIDTH, HEIGHT))
         self.background.fill((0, 0, 0))
 
-        self.player = sprites.Player(str(uuid.uuid1()), username)
-        self.sprite_map.add(self.player)
+        # assigned in startup
+        self.player = None
+        self.ghost_player = None
 
         # groups
-        self.characters = pygame.sprite.Group(self.player)
+        self.characters = pygame.sprite.Group()
         self.gems = pygame.sprite.Group()
 
         self.clock = pygame.time.Clock()
@@ -66,7 +67,7 @@ class Game(gol_abc.SpriteTracker):
                 f'Server report advanced version v{data["version"]}. Please update the client')
             return
 
-    async def startup(self, server_addr):
+    async def startup(self, username, server_addr):
         """Connect to the server and start game loop"""
         # set self.running to False (through exit_game) to end the game
         self.running = True
@@ -75,7 +76,7 @@ class Game(gol_abc.SpriteTracker):
             # Verify version match with server
             await ws.send(json.dumps({
                 "version": gol_abc.VERSION,
-                "player_state": self.player.report().to_dict()
+                "username": username
             }))
 
             hello = json.loads(await ws.recv())
@@ -85,10 +86,21 @@ class Game(gol_abc.SpriteTracker):
                 print(f'Server "{server_addr}" did not send initial game state')
                 return
 
+            if "player_state" not in hello:
+                print(f'Server "{server_addr}" did not send initial player state')
+                return
+
+            self.player = sprites.Player.from_spritedata(sprites.SpriteData.from_dict(hello["player_state"]))
+            # ensure the ghost player doesn't have the player's ID
+            hello["player_state"]["sprite_id"] = gol_abc.generate_uuid()
+            self.ghost_player = sprites.GhostPlayer.from_spritedata(sprites.SpriteData.from_dict(hello["player_state"]))
+            self.player.add(self.characters, self.sprite_map)
+            # not sure if this is necessary
+            self.sprite_map.add(self.ghost_player)
+
             self.initialize_state(hello["state"])
 
             game_loop = asyncio.create_task(self.run(ws))
-
             await game_loop
 
     async def run(self, ws):
@@ -101,7 +113,8 @@ class Game(gol_abc.SpriteTracker):
         """Run all aspects of one frame for the client."""
         self.handle_events()
 
-        self.player.update()
+        # update all sprites
+        self.all_sprites.update()
 
         await ws.send(json.dumps({
             "version": gol_abc.VERSION,
@@ -125,6 +138,7 @@ class Game(gol_abc.SpriteTracker):
 
             print("You" if winner is self.player else winner.username,
                   f"won with a score of {winner.score}!")
+            self.exit_game()
 
         # uncomment to implement FPS capping
         # self.clock.tick(MAX_FPS)
@@ -144,18 +158,13 @@ class Game(gol_abc.SpriteTracker):
         for sprite_data in state.data:
             if sprite_data.score is None:
                 # gem data
-                gem = sprites.Gem.from_spritedata(self, sprite_data)
-                self.gems.add(gem)
-                self.sprite_map.add(gem)
+                gem = sprites.ClientGem.from_spritedata(self, sprite_data)
+                gem.add(self.gems, self.sprite_map)
             elif sprite_data.owner_id is None and sprite_data.score is not None:
                 # character data
-                if sprite_data.sprite_id == self.player.sprite_id:
-                    self.player.update_spritedata(sprite_data)
-                    self.ghost_player = sprites.GhostPlayer.from_spritedata(sprite_data)
-                else:
-                    player = Character.from_spritedata(sprite_data)
-                    self.characters.add(player)
-                    self.sprite_map.add(player)
+                if sprite_data.sprite_id not in self.sprite_map.ids():
+                    player = sprites.Character.from_spritedata(sprite_data)
+                    player.add(self.characters, self.sprite_map)
             else:
                 raise ValueError("invalid sprite data")
 
@@ -179,8 +188,6 @@ class Game(gol_abc.SpriteTracker):
                 else:
                     self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
             else:
-                print(f"{sprite_data.score=}")
-                print(f"{sprite_data.owner_id=}")
                 raise ValueError("invalid sprite data")
 
     def render(self):
@@ -210,8 +217,8 @@ def main():
     # initialize all pygame modules
     pygame.init()
 
-    game = Game(args.username)
-    asyncio.run(game.startup(f'{args.server}:{args.port}'))
+    game = Game()
+    asyncio.run(game.startup(args.username, f'{args.server}:{args.port}'))
 
 
 if __name__ == "__main__":

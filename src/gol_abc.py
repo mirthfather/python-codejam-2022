@@ -1,8 +1,10 @@
 """Abstract classes for shared code everywhere."""
 
-import pygame
 import time
+import uuid
 from typing import List
+
+import pygame
 
 VERSION = 1.0
 
@@ -15,6 +17,11 @@ def timestamp() -> float:
     difference between what this function returned at two different times.
     """
     return time.clock_gettime(time.CLOCK_REALTIME)
+
+
+def generate_uuid() -> str:
+    """Generate a unique ID."""
+    return str(uuid.uuid1())
 
 
 class SpriteMap(pygame.sprite.Group):
