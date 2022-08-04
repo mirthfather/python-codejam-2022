@@ -188,7 +188,7 @@ class Character(AbstractSprite):
     def increment_score(self) -> None:
         """Increase this Character's score by 1."""
         self.score += 1
-        print(self, "scored!")
+        print(self.username, "scored!")
 
     def report(self) -> SpriteData:
         """
@@ -234,7 +234,8 @@ class Character(AbstractSprite):
         self.velocity = np.array(data.velocity)
         self.thrust = np.array(data.thrust)
 
-        self.score = data.score
+        if data.score is not None:
+            self.score = data.score
 
 
 class GhostPlayer(Character):
@@ -278,7 +279,28 @@ class Player(Character):
         :return: None
         """
         self.check_sprite_id(data.sprite_id)
-        self.score = data.score
+        if data.score is not None:
+            self.score = data.score
+
+    def report(self) -> SpriteData:
+        """
+        Report the current state of this sprite as SpriteData.
+
+        Like Character.report except the score is not reported.
+
+        :return: the current state
+        """
+        return SpriteData(
+            # general attributes
+            sprite_id=self.sprite_id,
+            # np arrays must be converted to floats before sending; otherwise,
+            # elements have a numpy type that is not JSON serializable
+            pos=tuple(map(float, self.pos)),
+            # Character attributes
+            username=self.username,
+            velocity=tuple(map(float, self.velocity)),
+            thrust=tuple(map(float, self.thrust))
+        )
 
 
 class Gem(AbstractSprite):

@@ -186,8 +186,7 @@ class Game(gol_abc.SpriteTracker):
             elif sprite_data.owner_id is None and sprite_data.score is not None:
                 if sprite_data.sprite_id == self.player.sprite_id:
                     self.ghost_player.update_spritedata(sprite_data)
-                else:
-                    self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
+                self.sprite_map[sprite_data.sprite_id].update_spritedata(sprite_data)
 
             else:
                 raise ValueError("invalid sprite data")
